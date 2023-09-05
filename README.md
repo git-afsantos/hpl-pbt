@@ -1,33 +1,107 @@
-# Bake a Py
+# HPL PBT
 
-This project provides a template from which you can create your own Python packages and projects.
-It uses modern tools and conventions to ensure a good development experience.
+This project provides tools to generate [Hypothesis](https://github.com/HypothesisWorks/hypothesis) Property-based Tests based on [HPL properties](https://github.com/git-afsantos/hpl-specs).
 
-- [Package Structure](#package-structure)
+- [Installation](#installation)
+- [Usage](#usage)
 - [GitHub Features](#github-features)
 - [Tooling](#tooling)
 
-## Package Structure
+## Installation
 
-Package structure was inspired by various templates and recommended best practices, such as:
+Install this package with
 
-- https://github.com/TezRomacH/python-package-template
-- https://github.com/pyscaffold/pyscaffold
-- https://github.com/f4str/python-package-template
-- https://github.com/audreyfeldroy/cookiecutter-pypackage
-- https://github.com/ionelmc/python-nameless
+```bash
+pip install hpl-pbt
+```
 
-It provides a `src` directory, under which your own packages sit. Example files for `__init__.py`, `__main__.py` and `cli.py` are already provided.
+## Usage
 
-Tests are placed under the `tests` directory, and documentation under the `docs` directory.
+### Test Generation
 
-To start your new project, you should change its name, URL and metadata details at:
+This package provides a library and a command line interface from which you can generate property-based tests with a simple command.
 
-1. `README.md`
-2. `CHANGELOG.md`
-3. `setup.py`
-4. `tests/*.py`
-5. `src/*`
+#### Requirements
+
+First, you will need a mapping of message channels to data types.
+This can be specified in YAML or JSON formats, when provided as a file. For example:
+
+```yaml
+%YAML 1.2
+# file: msg-types.yaml
+---
+messages:
+    int_msg: IntMessage
+    string_msg: UInt8Message
+    object_msg: ObjectMessage
+data:
+    IntMessage:
+        fields:
+            field_name: int
+    UInt8Message:
+        fields:
+            field_name: UInt8
+    UInt8:
+        extends: int
+        min_value: 0
+        max_value: 255
+    ObjectMessage:
+        fields:
+            a: bool
+            b: int[]
+            c: Subtype[]
+    Subtype:
+        fields:
+            d: string
+```
+
+Then, you will also need to provide a HPL specification.
+This can be either a list of properties, or a `.hpl` file, depending on how you want to use this package.
+
+#### As a Standalone Tool
+
+This package provides the `hpl-pbt` CLI script.
+
+**Required Arguments**
+
+1. a path to the data type mapping file
+2. either a list of properties or a list of `.hpl` files, depending on flags
+
+**Optional Arguments**
+
+- flag `-f` or `--files`: treat positional arguments as a list of paths to `.hpl` files instead of a list of properties
+- argument `-o` or `--output`: pass a path to an output file for the generated code (default: print to screen)
+
+**Example**
+
+```bash
+# generating tests from a specification file
+hpl-pbt -f -o tests.py msg-types.yaml properties.hpl
+```
+
+#### As a Library
+
+This repository provides the `hplpbt` Python package.
+
+**Example**
+
+```python
+from typing import Any, Dict, List
+from pathlib import Path
+from hpl.ast import HplProperty
+from hpl.parser import property_parser
+from hplpbt.rclpy import generate_tests
+
+parser = property_parser()
+
+msg_types: Dict[str, Any] = { 'messages': {}, 'data': {} }
+properties: List[HplProperty] = [parser.parse('globally: no /a {data > 0}')]
+
+test_code: str = generate_tests(properties, msg_types)
+
+path: Path = Path('test_script.py')
+path.write_text(test_code, encoding='utf-8')
+```
 
 ## GitHub Features
 
