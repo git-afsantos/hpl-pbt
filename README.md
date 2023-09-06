@@ -19,16 +19,16 @@ pip install hpl-pbt
 
 ### Test Generation
 
-This package provides a library and a command line interface from which you can generate property-based tests with a simple command.
+This package provides a library and a command line interface from which you can generate property-based test templates with a simple command.
 
 #### Requirements
 
-First, you will need a mapping of message channels to data types.
+First, you will need a mapping of input message channels to data types.
 This can be specified in YAML or JSON formats, when provided as a file. For example:
 
 ```yaml
 %YAML 1.2
-# file: msg-types.yaml
+# file: inputs.yaml
 ---
 messages:
     int_msg: IntMessage
@@ -36,23 +36,25 @@ messages:
     object_msg: ObjectMessage
 data:
     IntMessage:
-        fields:
-            field_name: int
+        params:
+            - int
     UInt8Message:
-        fields:
-            field_name: UInt8
-    UInt8:
-        extends: int
-        min_value: 0
-        max_value: 255
+        params:
+            -
+                type: int
+                min_value: 0
+                max_value: 255
     ObjectMessage:
-        fields:
-            a: bool
-            b: int[]
-            c: Subtype[]
+        import: third_party_pkg
+        params:
+            - bool
+            - int[]
+            -
+                name: keyword_arg
+                type: Subtype[]
     Subtype:
-        fields:
-            d: string
+        params:
+            - string
 ```
 
 Then, you will also need to provide a HPL specification.
@@ -76,7 +78,7 @@ This package provides the `hpl-pbt` CLI script.
 
 ```bash
 # generating tests from a specification file
-hpl-pbt -f -o tests.py msg-types.yaml properties.hpl
+hpl-pbt -f -o tests.py inputs.yaml properties.hpl
 ```
 
 #### As a Library
