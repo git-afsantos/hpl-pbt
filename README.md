@@ -92,7 +92,7 @@ from typing import Any, Dict, List
 from pathlib import Path
 from hpl.ast import HplProperty
 from hpl.parser import property_parser
-from hplpbt.rclpy import generate_tests
+from hplpbt import generate_tests
 
 parser = property_parser()
 
