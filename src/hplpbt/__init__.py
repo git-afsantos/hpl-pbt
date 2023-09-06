@@ -7,6 +7,8 @@
 
 from importlib.metadata import PackageNotFoundError, version  # pragma: no cover
 
+from hplpbt.gen import generate_tests
+
 ###############################################################################
 # Constants
 ###############################################################################
