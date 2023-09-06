@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright © 2021 André Santos
+# Copyright © 2023 André Santos
 
 ###############################################################################
 # Imports
@@ -12,8 +12,8 @@ from setuptools import find_packages, setup
 # Constants
 ###############################################################################
 
-PROJECT = 'bake-a-py'
-PYTHON_PKG = 'bakeapy'
+PROJECT = 'hpl-pbt'
+PYTHON_PKG = 'hplpbt'
 HERE = Path(__file__).parent
 
 ###############################################################################
@@ -39,18 +39,18 @@ setup(
         'local_scheme': 'dirty-tag',
         'fallback_version': '0.1.0',
     },
-    description='Variability analysis tool for ROS systems',
+    description='Property-based Testing based on HPL properties',
     long_description=read('README.md'),
     long_description_content_type='text/markdown',
     url=f'https://github.com/git-afsantos/{PROJECT}',
     author='André Santos',
     author_email='haros.framework@gmail.com',
     license='MIT',
-    keywords='ros, variability, software product lines, feature models',
+    keywords='testing, property-based testing, specification patterns',
     packages=find_packages(where='src'),
     package_dir={'': 'src'},
     include_package_data=True,
-    package_data={},  # {PYTHON_PKG: ['dir/*.file']},
+    package_data={PYTHON_PKG: ['templates']},
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
