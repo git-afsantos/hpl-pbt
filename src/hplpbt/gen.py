@@ -101,4 +101,8 @@ def _validate_type_def(name: str, type_def: Mapping[str, Any]):
 
 
 def _validate_param_constraints(name: str, entry: Mapping[str, Any]):
-    pass
+    value = entry.get('type')
+    if value is None:
+        raise ValueError(f"parameter without a 'type' in {name}")
+    if not isinstance(value, str):
+        raise TypeError(f"expected str 'type' value for parameter of {name}, found {value!r}")
