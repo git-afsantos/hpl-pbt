@@ -18,12 +18,23 @@ Some of the structure of this file came from this StackExchange question:
 # Imports
 ###############################################################################
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Final, List, Optional
 
 import argparse
+from pathlib import Path
 import sys
+from traceback import print_exc
+
+from ruamel.yaml import YAML
 
 from hplpbt import __version__ as current_version
+from hplpbt.gen import generate_tests, generate_tests_from_files
+
+###############################################################################
+# Constants
+###############################################################################
+
+PROG: Final[str] = 'hplpbt'
 
 ###############################################################################
 # Argument Parsing
@@ -31,16 +42,32 @@ from hplpbt import __version__ as current_version
 
 
 def parse_arguments(argv: Optional[List[str]]) -> Dict[str, Any]:
-    msg = 'A short description of the project.'
-    parser = argparse.ArgumentParser(description=msg)
+    description = 'Property-based test generator for HPL properties.'
+    parser = argparse.ArgumentParser(prog=PROG, description=description)
 
     parser.add_argument(
-        '--version', dest='version', action='store_true', help='Prints the program version.'
+        '--version',
+        action='version',
+        version=f'{PROG} {current_version}',
+        help='prints the program version',
+    )
+
+    parser.add_argument('-o', '--output', help='output file to place generated code')
+
+    parser.add_argument(
+        '-f',
+        '--files',
+        action='store_true',
+        help='process args as HPL files (default: HPL properties)',
     )
 
     parser.add_argument(
-        'args', metavar='ARG', nargs=argparse.ZERO_OR_MORE, help='An argument for the program.'
+        'msg_types',
+        type=Path,
+        help='path to a YAML/JSON file with types for each message channel',
     )
+
+    parser.add_argument('specs', nargs='+', help='input properties')
 
     args = parser.parse_args(args=argv)
     return vars(args)
@@ -76,11 +103,23 @@ def load_configs(args: Dict[str, Any]) -> Dict[str, Any]:
 ###############################################################################
 
 
-def do_real_work(args: Dict[str, Any], configs: Dict[str, Any]) -> None:
-    print(f'Arguments: {args}')
-    print(f'Configurations: {configs}')
-    if args['version']:
-        print(f'Version: {current_version}')
+def handle_test_generation(args: Dict[str, Any], _configs: Dict[str, Any]) -> int:
+    yaml = YAML(typ='safe')
+    msg_types: Dict[str, str] = yaml.load(args['msg_types'])
+
+    if args.get('files'):
+        output: str = generate_tests_from_files(args['specs'], msg_types)
+    else:
+        output = generate_tests(args['specs'], msg_types)
+
+    output_path: Optional[str] = args.get('output')
+    if output_path:
+        path: Path = Path(output_path).resolve(strict=False)
+        path.write_text(output, encoding='utf-8')
+    else:
+        print(output)
+
+    return 0  # success
 
 
 ###############################################################################
@@ -92,23 +131,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parse_arguments(argv)
 
     try:
-        # Load additional config files here, e.g., from a path given via args.
-        # Alternatively, set sane defaults if configuration is missing.
         config = load_configs(args)
-        do_real_work(args, config)
+        return handle_test_generation(args, config)
 
     except KeyboardInterrupt:
         print('Aborted manually.', file=sys.stderr)
         return 1
 
     except Exception as err:
-        # In real code the `except` would probably be less broad.
-        # Turn exceptions into appropriate logs and/or console output.
-
-        print('An unhandled exception crashed the application!', err)
-
-        # Non-zero return code to signal error.
-        # It can, of course, be more fine-grained than this general code.
+        print('An unhandled exception crashed the application!')
+        print(err)
+        print_exc()
         return 1
-
-    return 0  # success
