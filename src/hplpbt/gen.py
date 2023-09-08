@@ -55,7 +55,7 @@ def generate_tests(
     _validate_msg_types(msg_types)
     parser = property_parser()
     properties = [p if isinstance(p, HplProperty) else parser.parse(p) for p in properties]
-    return ''
+    return 'Hello, world!'
 
 
 ###############################################################################
