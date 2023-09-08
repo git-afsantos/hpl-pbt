@@ -28,7 +28,7 @@ This can be specified in YAML or JSON formats, when provided as a file. For exam
 
 ```yaml
 %YAML 1.2
-# file: inputs.yaml
+# file: msg_types.yaml
 ---
 messages:
     int_msg: IntMessage
@@ -78,7 +78,7 @@ This package provides the `hpl-pbt` CLI script.
 
 ```bash
 # generating tests from a specification file
-hpl-pbt -f -o tests.py inputs.yaml properties.hpl
+hpl-pbt -f -o tests.py msg_types.yaml properties.hpl
 ```
 
 #### As a Library
