@@ -66,7 +66,11 @@ def generate_tests(
     properties = [p if isinstance(p, HplProperty) else parser.parse(p) for p in properties]
     input_channels = msg_types[MSG_TYPES_KEY_CHANNELS]
     assumptions, behaviour = split_assumptions(properties, input_channels)
-    return f'assumptions:\n{assumptions}\n\nbehaviour:\n{behaviour}'
+    parts = ['# assumptions']
+    parts.extend(map(repr, map(str, assumptions)))
+    parts.append('# behaviour')
+    parts.extend(map(repr, map(str, behaviour)))
+    return '\n'.join(parts)
 
 
 ###############################################################################
