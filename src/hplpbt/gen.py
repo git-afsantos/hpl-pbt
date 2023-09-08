@@ -5,12 +5,21 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Iterable, List, Mapping, Optional, Union
+from typing import Any, Final, Iterable, List, Mapping, Optional, Tuple, Union
 
 from pathlib import Path
 
 from hpl.ast import HplProperty, HplSpecification
 from hpl.parser import property_parser, specification_parser
+
+from hplpbt.logic import split_assumptions
+
+###############################################################################
+# Constants
+###############################################################################
+
+MSG_TYPES_KEY_CHANNELS: Final[str] = 'messages'
+MSG_TYPES_KEY_TYPEDEFS: Final[str] = 'data'
 
 ###############################################################################
 # Interface
@@ -55,33 +64,42 @@ def generate_tests(
     _validate_msg_types(msg_types)
     parser = property_parser()
     properties = [p if isinstance(p, HplProperty) else parser.parse(p) for p in properties]
-    return 'Hello, world!'
+    input_channels = msg_types[MSG_TYPES_KEY_CHANNELS]
+    assumptions, behaviour = split_assumptions(properties, input_channels)
+    return f'assumptions:\n{assumptions}\n\nbehaviour:\n{behaviour}'
 
 
 ###############################################################################
-# Helper Functions
+# Input Validation
 ###############################################################################
 
 
 def _validate_msg_types(msg_types: Mapping[str, Mapping[str, Any]]):
     if not isinstance(msg_types, Mapping):
         raise TypeError(f'expected Mapping[str, Mapping[str, Any]], got {msg_types!r}')
-    messages: Mapping[str, str] = msg_types['messages']
-    for key, value in messages.items():
-        if not isinstance(key, str):
-            raise TypeError(f"expected str keys in 'messages', found {key!r}")
-        if not isinstance(value, str):
-            raise TypeError(f"expected str values for each 'messages' key, found {value!r}")
-    data: Mapping[str, Mapping[str, Any]] = msg_types['data']
+    typedefs = set()
+    data: Mapping[str, Mapping[str, Any]] = msg_types[MSG_TYPES_KEY_TYPEDEFS]
     for key, value in data.items():
         if not isinstance(key, str):
-            raise TypeError(f"expected str keys in 'data', found {key!r}")
+            raise TypeError(f"expected str keys in '{MSG_TYPES_KEY_TYPEDEFS}', found {key!r}")
         if not isinstance(value, Mapping):
             raise TypeError(
-                "expected Mapping[str, Any] values for each 'data' key, "
-                f'found {value!r}'
+                f"expected Mapping[str, Any] values for each '{MSG_TYPES_KEY_TYPEDEFS}' key,"
+                f' found {value!r}'
             )
         _validate_type_def(key, value)
+        typedefs.add(key)
+    messages: Mapping[str, str] = msg_types[MSG_TYPES_KEY_CHANNELS]
+    for key, value in messages.items():
+        if not isinstance(key, str):
+            raise TypeError(f"expected str keys in '{MSG_TYPES_KEY_CHANNELS}', found {key!r}")
+        if not isinstance(value, str):
+            raise TypeError(
+                f"expected str values for each '{MSG_TYPES_KEY_CHANNELS}' key,"
+                f" found {value!r}"
+            )
+        if value not in typedefs:
+            raise ValueError(f"unknown message type {value!r}")
 
 
 def _validate_type_def(name: str, type_def: Mapping[str, Any]):
