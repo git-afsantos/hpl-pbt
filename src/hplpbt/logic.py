@@ -54,21 +54,11 @@ def _split_safety(
     input_channels: Container[str],
 ) -> Tuple[List[HplProperty], List[HplProperty]]:
     # optimization: avoid creating new objects if the event is simple
-    if hpl_property.pattern.behaviour.is_simple_event:
-        if hpl_property.pattern.behaviour.name in input_channels:
-            return [hpl_property], []
-        else:
-            return [], [hpl_property]
-    assumptions = []
-    behaviour = []
-    for b in hpl_property.pattern.behaviour.simple_events():
-        new_pattern = hpl_property.pattern.but(behaviour=b)
-        new_property = hpl_property.but(pattern=new_pattern)
-        if b.name in input_channels:
-            assumptions.append(new_property)
-        else:
-            behaviour.append(new_property)
-    return assumptions, behaviour
+    assert hpl_property.pattern.behaviour.is_simple_event
+    if hpl_property.pattern.behaviour.name in input_channels:
+        return [hpl_property], []
+    else:
+        return [], [hpl_property]
 
 
 def _split_liveness(

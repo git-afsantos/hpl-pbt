@@ -11,6 +11,7 @@ from pathlib import Path
 
 from hpl.ast import HplProperty, HplSpecification
 from hpl.parser import property_parser, specification_parser
+from hpl.rewrite import canonical_form
 
 from hplpbt.logic import split_assumptions
 
@@ -58,19 +59,29 @@ def generate_tests_from_spec(
 
 
 def generate_tests(
-    properties: Iterable[Union[str, HplProperty]],
+    input_properties: Iterable[Union[str, HplProperty]],
     msg_types: Mapping[str, Mapping[str, Any]],
 ) -> str:
     _validate_msg_types(msg_types)
-    parser = property_parser()
-    properties = [p if isinstance(p, HplProperty) else parser.parse(p) for p in properties]
+    input_properties = _parsed_properties(input_properties)
     input_channels = msg_types[MSG_TYPES_KEY_CHANNELS]
-    assumptions, behaviour = split_assumptions(properties, input_channels)
+    canonical_properties = [p for ps in map(canonical_form, input_properties) for p in ps]
+    assumptions, behaviour = split_assumptions(canonical_properties, input_channels)
     parts = ['# assumptions']
     parts.extend(map(repr, map(str, assumptions)))
     parts.append('# behaviour')
     parts.extend(map(repr, map(str, behaviour)))
     return '\n'.join(parts)
+
+
+###############################################################################
+# Helper Functions
+###############################################################################
+
+
+def _parsed_properties(properties: Iterable[Union[str, HplProperty]]) -> List[HplProperty]:
+    parser = property_parser()
+    return [p if isinstance(p, HplProperty) else parser.parse(p) for p in properties]
 
 
 ###############################################################################
