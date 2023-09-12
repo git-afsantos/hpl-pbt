@@ -14,6 +14,7 @@ from hpl.parser import property_parser, specification_parser
 from hpl.rewrite import canonical_form
 
 from hplpbt.logic import split_assumptions
+from hplpbt.strategies.messages import message_strategies_for_spec
 
 ###############################################################################
 # Constants
@@ -67,6 +68,7 @@ def generate_tests(
     input_channels = msg_types[MSG_TYPES_KEY_CHANNELS]
     canonical_properties = [p for ps in map(canonical_form, input_properties) for p in ps]
     assumptions, behaviour = split_assumptions(canonical_properties, input_channels)
+    msg_strategies = message_strategies_for_spec(behaviour)
     parts = ['# assumptions']
     parts.extend(map(repr, map(str, assumptions)))
     parts.append('# behaviour')
