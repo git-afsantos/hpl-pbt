@@ -8,6 +8,7 @@
 from typing import Iterable, List, Union
 
 from hpl.ast import HplProperty, HplSpecification
+from hpl.parser import parse_property
 
 ###############################################################################
 # Interface
@@ -26,5 +27,7 @@ def message_strategies_for_spec(
     return [strat for property in spec for strat in message_strategies_for_property(property)]
 
 
-def message_strategies_for_property() -> List[MessageStrategy]:
+def message_strategies_for_property(property: Union[str, HplProperty]) -> List[MessageStrategy]:
+    if not isinstance(property, HplProperty):
+        property = parse_property(property)
     return []
