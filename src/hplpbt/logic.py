@@ -8,12 +8,14 @@
 from typing import Container, Iterable, List, Tuple
 
 from hpl.ast import HplProperty
+from typeguard import typechecked
 
 ###############################################################################
 # Interface
 ###############################################################################
 
 
+@typechecked
 def split_assumptions(
     hpl_properties: Iterable[HplProperty],
     input_channels: Container[str],
