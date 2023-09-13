@@ -10,10 +10,9 @@ from typing import Any, Iterable, List, Mapping, Optional, Union
 from enum import Enum, auto
 
 from attrs import define, field, frozen
-from typeguard import typechecked
-
 from hpl.ast import HplExpression, HplProperty, HplSpecification
 from hpl.types import TypeToken
+from typeguard import typechecked
 
 ################################################################################
 # Internal Structures: Basic (Data) Field Generator
@@ -70,14 +69,14 @@ def message_strategies_for_spec(
     if isinstance(spec, HplSpecification):
         spec = spec.properties
     return [
-        strat for property in spec
-        for strat in message_strategies_for_property(property, msg_types)
+        strat for hpl_property in spec
+        for strat in message_strategies_for_property(hpl_property, msg_types)
     ]
 
 
 @typechecked
 def message_strategies_for_property(
-    property: HplProperty,
+    hpl_property: HplProperty,
     msg_types: Mapping[str, Mapping[str, Any]],
 ) -> List[MessageStrategy]:
     return [MessageStrategy('Hello')]
