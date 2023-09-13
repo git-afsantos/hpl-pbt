@@ -5,12 +5,12 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Iterable, List, Mapping, Optional, Union
+from typing import Any, Iterable, List, Mapping, Optional, Set, Union
 
 from enum import Enum, auto
 
 from attrs import define, field, frozen
-from hpl.ast import HplExpression, HplProperty, HplSpecification
+from hpl.ast import HplEvent, HplExpression, HplProperty, HplSimpleEvent, HplSpecification
 from hpl.types import TypeToken
 from typeguard import typechecked
 
@@ -64,24 +64,84 @@ class MessageStrategy:
 @typechecked
 def message_strategies_for_spec(
     spec: Union[HplSpecification, Iterable[HplProperty]],
-    msg_types: Mapping[str, Mapping[str, Any]],
-) -> List[MessageStrategy]:
+    input_channels: Mapping[str, str],
+    type_defs: Mapping[str, Mapping[str, Any]],
+) -> Set[MessageStrategy]:
     if isinstance(spec, HplSpecification):
         spec = spec.properties
-    return [
-        strat for hpl_property in spec
-        for strat in message_strategies_for_property(hpl_property, msg_types)
-    ]
+    strategies = set()
+    for hpl_property in spec:
+        strategies.update(message_strategies_for_property(hpl_property, input_channels, type_defs))
+    return strategies
 
 
 @typechecked
 def message_strategies_for_property(
     hpl_property: HplProperty,
-    msg_types: Mapping[str, Mapping[str, Any]],
-) -> List[MessageStrategy]:
-    return [MessageStrategy('Hello')]
+    input_channels: Mapping[str, str],
+    type_defs: Mapping[str, Mapping[str, Any]],
+) -> Set[MessageStrategy]:
+    strategies = set()
+
+    event = hpl_property.scope.activator
+    if event is not None:
+        strategies.update(message_strategies_for_event(event, input_channels, type_defs))
+    event = hpl_property.scope.terminator
+    if event is not None:
+        strategies.update(message_strategies_for_event(event, input_channels, type_defs))
+
+    if hpl_property.pattern.is_absence:
+        pass
+
+    elif hpl_property.pattern.is_existence:
+        pass
+
+    elif hpl_property.pattern.is_requirement:
+        event = hpl_property.pattern.trigger
+        assert event is not None
+        strategies.update(message_strategies_for_event(event, input_channels, type_defs))
+
+    elif hpl_property.pattern.is_response:
+        event = hpl_property.pattern.trigger
+        assert event is not None
+        strategies.update(message_strategies_for_event(event, input_channels, type_defs))
+
+    elif hpl_property.pattern.is_prevention:
+        event = hpl_property.pattern.trigger
+        assert event is not None
+        strategies.update(message_strategies_for_event(event, input_channels, type_defs))
+
+    else:
+        raise TypeError(f'unknown HPL property type: {hpl_property!r}')
+
+    return strategies
+
+
+@typechecked
+def message_strategies_for_event(
+    event: HplEvent,
+    input_channels: Mapping[str, str],
+    type_defs: Mapping[str, Mapping[str, Any]],
+) -> Set[MessageStrategy]:
+    return set(
+        strat
+        for msg in event.simple_events()
+        for strat in _build_strategies(msg, input_channels, type_defs)
+    )
 
 
 ###############################################################################
 # Helper Functions
 ###############################################################################
+
+
+def _build_strategies(
+    event: HplSimpleEvent,
+    input_channels: Mapping[str, str],
+    type_defs: Mapping[str, Mapping[str, Any]],
+) -> Set[MessageStrategy]:
+    strategies = set()
+    if event.name not in input_channels:
+        return strategies
+    strategies.add(MessageStrategy(event.name))
+    return strategies
