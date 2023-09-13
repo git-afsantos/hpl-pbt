@@ -68,11 +68,13 @@ def generate_tests(
     input_channels = msg_types[MSG_TYPES_KEY_CHANNELS]
     canonical_properties = [p for ps in map(canonical_form, input_properties) for p in ps]
     assumptions, behaviour = split_assumptions(canonical_properties, input_channels)
-    msg_strategies = message_strategies_for_spec(behaviour)
+    msg_strategies = message_strategies_for_spec(behaviour, msg_types)
     parts = ['# assumptions']
     parts.extend(map(repr, map(str, assumptions)))
     parts.append('# behaviour')
     parts.extend(map(repr, map(str, behaviour)))
+    parts.append('# strategies')
+    parts.extend(map(repr, map(str, msg_strategies)))
     return '\n'.join(parts)
 
 
