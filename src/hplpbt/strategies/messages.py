@@ -62,86 +62,108 @@ class MessageStrategy:
 
 
 @typechecked
-def message_strategies_for_spec(
+def strategies_from_spec(
     spec: Union[HplSpecification, Iterable[HplProperty]],
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, Mapping[str, Any]],
+    assumptions: Optional[Iterable[HplProperty]] = None,
 ) -> Set[MessageStrategy]:
-    if isinstance(spec, HplSpecification):
-        spec = spec.properties
-    strategies = set()
-    for hpl_property in spec:
-        strategies.update(message_strategies_for_property(hpl_property, input_channels, type_defs))
-    return strategies
+    assumptions = assumptions if assumptions is not None else []
+    builder = MessageStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
+    return builder.build_from_spec(spec)
 
 
 @typechecked
-def message_strategies_for_property(
+def strategies_from_property(
     hpl_property: HplProperty,
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, Mapping[str, Any]],
+    assumptions: Optional[Iterable[HplProperty]] = None,
 ) -> Set[MessageStrategy]:
-    strategies = set()
-
-    event = hpl_property.scope.activator
-    if event is not None:
-        strategies.update(message_strategies_for_event(event, input_channels, type_defs))
-    event = hpl_property.scope.terminator
-    if event is not None:
-        strategies.update(message_strategies_for_event(event, input_channels, type_defs))
-
-    if hpl_property.pattern.is_absence:
-        pass
-
-    elif hpl_property.pattern.is_existence:
-        pass
-
-    elif hpl_property.pattern.is_requirement:
-        event = hpl_property.pattern.trigger
-        assert event is not None
-        strategies.update(message_strategies_for_event(event, input_channels, type_defs))
-
-    elif hpl_property.pattern.is_response:
-        event = hpl_property.pattern.trigger
-        assert event is not None
-        strategies.update(message_strategies_for_event(event, input_channels, type_defs))
-
-    elif hpl_property.pattern.is_prevention:
-        event = hpl_property.pattern.trigger
-        assert event is not None
-        strategies.update(message_strategies_for_event(event, input_channels, type_defs))
-
-    else:
-        raise TypeError(f'unknown HPL property type: {hpl_property!r}')
-
-    return strategies
+    assumptions = assumptions if assumptions is not None else []
+    builder = MessageStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
+    return builder.build_from_property(property)
 
 
 @typechecked
-def message_strategies_for_event(
+def strategies_from_event(
     event: HplEvent,
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, Mapping[str, Any]],
+    assumptions: Optional[Iterable[HplProperty]] = None,
 ) -> Set[MessageStrategy]:
-    return set(
-        strat
-        for msg in event.simple_events()
-        for strat in _build_strategies(msg, input_channels, type_defs)
-    )
+    assumptions = assumptions if assumptions is not None else []
+    builder = MessageStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
+    return builder.build_from_event(event)
 
 
 ###############################################################################
-# Helper Functions
+# Message Strategy Builder
 ###############################################################################
 
 
-def _build_strategies(
-    event: HplSimpleEvent,
-    input_channels: Mapping[str, str],
-    type_defs: Mapping[str, Mapping[str, Any]],
-) -> Set[MessageStrategy]:
-    strategies = set()
-    if event.name not in input_channels:
+@frozen
+class MessageStrategyBuilder:
+    input_channels: Mapping[str, str]
+    type_defs: Mapping[str, Mapping[str, Any]]
+    assumptions: Iterable[HplProperty] = field(factory=list)
+
+    def build_from_spec(
+        self,
+        spec: Union[HplSpecification, Iterable[HplProperty]],
+    ) -> Set[MessageStrategy]:
+        if isinstance(spec, HplSpecification):
+            spec = spec.properties
+        strategies = set()
+        for hpl_property in spec:
+            strategies.update(self.build_from_property(hpl_property))
         return strategies
-    strategies.add(MessageStrategy(event.name))
-    return strategies
+
+    def build_from_property(self, hpl_property: HplProperty) -> Set[MessageStrategy]:
+        strategies = set()
+
+        event = hpl_property.scope.activator
+        if event is not None:
+            strategies.update(self.build_from_event(event))
+        event = hpl_property.scope.terminator
+        if event is not None:
+            strategies.update(self.build_from_event(event))
+
+        if hpl_property.pattern.is_absence:
+            pass
+
+        elif hpl_property.pattern.is_existence:
+            pass
+
+        elif hpl_property.pattern.is_requirement:
+            event = hpl_property.pattern.trigger
+            assert event is not None
+            strategies.update(self.build_from_event(event))
+
+        elif hpl_property.pattern.is_response:
+            event = hpl_property.pattern.trigger
+            assert event is not None
+            strategies.update(self.build_from_event(event))
+
+        elif hpl_property.pattern.is_prevention:
+            event = hpl_property.pattern.trigger
+            assert event is not None
+            strategies.update(self.build_from_event(event))
+
+        else:
+            raise TypeError(f'unknown HPL property type: {hpl_property!r}')
+
+        return strategies
+
+    def build_from_event(self, event: HplEvent) -> Set[MessageStrategy]:
+        if event.is_simple_event:
+            return self._build_strategies(event)
+        return set(strat for msg in event.simple_events() for strat in self._build_strategies(msg))
+
+    def _build_strategies(self, event: HplSimpleEvent) -> Set[MessageStrategy]:
+        strategies = set()
+        if event.name not in self.input_channels:
+            return strategies
+        type_name: str = self.input_channels[event.name]
+        strategies.add(MessageStrategy(type_name))
+        return strategies
