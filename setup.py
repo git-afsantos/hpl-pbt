@@ -73,10 +73,11 @@ setup(
     python_requires='>=3.8, <4',
     install_requires=[
         'attrs~=23.1',
-        'hpl-rv>=1.1.2,<2.0',
-        'hpl-specs>=1.2.0,<2.0',
-        'Jinja2~=3.1.0',
-        'ruamel.yaml~=0.17.0',
+        'hpl-rv~=1.1',
+        'hpl-specs~=1.2',
+        'Jinja2~=3.1',
+        'ruamel.yaml~=0.17',
+        'typeguard~=4.1',
     ],
     extras_require={
         'dev': ['pytest', 'tox'],
