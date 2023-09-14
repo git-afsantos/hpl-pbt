@@ -42,12 +42,21 @@ class MessageType:
 
 
 @typechecked
+def param_from_data(data: Union[str, Mapping[str, Any]]) -> ParameterDefinition:
+    if isinstance(data, str):
+        data = {'type': data}
+    # name: str = data.get('name', '')
+    type_string: str = check_type(data['type'], str)
+    return ParameterDefinition(type_string)
+
+
+@typechecked
 def message_from_data(name: str, data: Mapping[str, Any]) -> MessageType:
     package = check_type(data.get('import', ''), str)
-    arg_data = check_type(data.get('args', ()), Iterable[str])
-    params = list(map(ParameterDefinition, arg_data))
-    kwarg_data = check_type(data.get('kwargs', {}), Mapping[str, str])
-    kwparams = {key: ParameterDefinition(value) for key, value in kwarg_data.items()}
+    arg_data = check_type(data.get('args', ()), Iterable[Union[str, Mapping[str, Any]]])
+    params = list(map(param_from_data, arg_data))
+    kwarg_data = check_type(data.get('kwargs', {}), Mapping[str, Union[str, Mapping[str, Any]]])
+    kwparams = {key: param_from_data(value) for key, value in kwarg_data.items()}
     return MessageType(
         name,
         package=package,
