@@ -156,5 +156,8 @@ class MessageStrategyBuilder:
             return strategies
         type_name: str = self.input_channels[event.name]
         type_def: MessageType = self.type_defs[type_name]
-        strategies.add(MessageStrategy(repr(type_def)))
+        strategies.add(self._build_strategy_for_type(type_def))
         return strategies
+
+    def _build_strategy_for_type(self, type_def: MessageType) -> MessageStrategy:
+        return MessageStrategy(repr(type_def))
