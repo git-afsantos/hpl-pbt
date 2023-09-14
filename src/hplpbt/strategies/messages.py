@@ -13,7 +13,7 @@ from hpl.ast import HplEvent, HplProperty, HplSimpleEvent, HplSpecification
 # from hpl.types import TypeToken
 from typeguard import typechecked
 
-from hplpbt.types import MessageType, message_from_data
+from hplpbt.types import MessageType
 
 ################################################################################
 # Message Strategy
@@ -34,12 +34,11 @@ class MessageStrategy:
 def strategies_from_spec(
     spec: Union[HplSpecification, Iterable[HplProperty]],
     input_channels: Mapping[str, str],
-    type_defs: Mapping[str, Mapping[str, Any]],
+    type_defs: Mapping[str, MessageType],
     assumptions: Optional[Iterable[HplProperty]] = None,
 ) -> Set[MessageStrategy]:
     assumptions = assumptions if assumptions is not None else []
-    msg_types = {name: message_from_data(name, data) for name, data in type_defs.items()}
-    builder = MessageStrategyBuilder(input_channels, msg_types, assumptions=assumptions)
+    builder = MessageStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
     return builder.build_from_spec(spec)
 
 
@@ -47,25 +46,23 @@ def strategies_from_spec(
 def strategies_from_property(
     hpl_property: HplProperty,
     input_channels: Mapping[str, str],
-    type_defs: Mapping[str, Mapping[str, Any]],
+    type_defs: Mapping[str, MessageType],
     assumptions: Optional[Iterable[HplProperty]] = None,
 ) -> Set[MessageStrategy]:
     assumptions = assumptions if assumptions is not None else []
-    msg_types = {name: message_from_data(name, data) for name, data in type_defs.items()}
-    builder = MessageStrategyBuilder(input_channels, msg_types, assumptions=assumptions)
-    return builder.build_from_property(property)
+    builder = MessageStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
+    return builder.build_from_property(hpl_property)
 
 
 @typechecked
 def strategies_from_event(
     event: HplEvent,
     input_channels: Mapping[str, str],
-    type_defs: Mapping[str, Mapping[str, Any]],
+    type_defs: Mapping[str, MessageType],
     assumptions: Optional[Iterable[HplProperty]] = None,
 ) -> Set[MessageStrategy]:
     assumptions = assumptions if assumptions is not None else []
-    msg_types = {name: message_from_data(name, data) for name, data in type_defs.items()}
-    builder = MessageStrategyBuilder(input_channels, msg_types, assumptions=assumptions)
+    builder = MessageStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
     return builder.build_from_event(event)
 
 

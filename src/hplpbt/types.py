@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Iterable, List, Mapping, Optional, Union
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Union
 
 from attrs import field, frozen
 # from hpl.types import TypeToken
@@ -56,3 +56,8 @@ def message_from_data(name: str, data: Mapping[str, Any]) -> MessageType:
     param_data = check_type(data['params'], Iterable[Union[str, Mapping[str, Any]]])
     params: List[ParameterDefinition] = list(map(param_from_data, param_data))
     return MessageType(name, package=package, parameters=params)
+
+
+@typechecked
+def type_map_from_data(data: Mapping[str, Mapping[str, Any]]) -> Dict[str, MessageType]:
+    return {name: message_from_data(name, type_def) for name, type_def in data.items()}
