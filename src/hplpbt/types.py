@@ -19,18 +19,18 @@ from typeguard import check_type, typechecked
 @frozen
 class ParameterDefinition:
     type: str
-    name: str = ''
 
     @property
     def is_array(self) -> bool:
-        return self.type.endswith(']')
+        return '[' in self.type
 
 
 @frozen
 class MessageType:
     name: str
-    package: Optional[str] = None
-    parameters: List[ParameterDefinition] = field(factory=list)
+    package: str = ''
+    positional_parameters: Iterable[ParameterDefinition] = field(factory=list)
+    keyword_parameters: Mapping[str, ParameterDefinition] = field(factory=dict)
 
     def __str__(self) -> str:
         return self.name if self.package is None else f'{self.package}.{self.name}'
@@ -42,20 +42,18 @@ class MessageType:
 
 
 @typechecked
-def param_from_data(data: Union[str, Mapping[str, Any]]) -> ParameterDefinition:
-    if isinstance(data, str):
-        data = {'type': data}
-    name: str = data.get('name', '')
-    type_string: str = check_type(data['type'], str)
-    return ParameterDefinition(type_string, name=name)
-
-
-@typechecked
 def message_from_data(name: str, data: Mapping[str, Any]) -> MessageType:
-    package = check_type(data.get('import'), Optional[str])
-    param_data = check_type(data['params'], Iterable[Union[str, Mapping[str, Any]]])
-    params: List[ParameterDefinition] = list(map(param_from_data, param_data))
-    return MessageType(name, package=package, parameters=params)
+    package = check_type(data.get('import', ''), str)
+    arg_data = check_type(data.get('args', ()), Iterable[str])
+    params = list(map(ParameterDefinition, arg_data))
+    kwarg_data = check_type(data.get('kwargs', {}), Mapping[str, str])
+    kwparams = {key: ParameterDefinition(value) for key, value in kwarg_data.items()}
+    return MessageType(
+        name,
+        package=package,
+        positional_parameters=params,
+        keyword_parameters=kwparams,
+    )
 
 
 @typechecked

@@ -127,21 +127,23 @@ def _validate_type_def(name: str, type_def: Mapping[str, Any]):
     module: Optional[str] = type_def.get('import')
     if module is not None and not isinstance(module, str):
         raise TypeError(f"expected str 'import' value for {name}, found {module!r}")
-    params: Iterable[Any] = type_def['params']
-    if not isinstance(params, Iterable):
-        raise TypeError(f"expected Iterable 'params' value for {name}, found {params!r}")
-    for item in params:
-        if isinstance(item, str):
-            continue
-        if isinstance(item, Mapping):
-            _validate_param_constraints(name, item)
-            continue
-        raise TypeError(f"expected str or Mapping 'params' entry for {name}, found {item!r}")
+    _validate_type_pos_args(name, type_def.get('args', ()))
+    _validate_type_kwargs(name, type_def.get('kwargs', {}))
 
 
-def _validate_param_constraints(name: str, entry: Mapping[str, Any]):
-    value = entry.get('type')
-    if value is None:
-        raise ValueError(f"parameter without a 'type' in {name}")
-    if not isinstance(value, str):
-        raise TypeError(f"expected str 'type' value for parameter of {name}, found {value!r}")
+def _validate_type_pos_args(name: str, args: Iterable[str]):
+    if not isinstance(args, Iterable):
+        raise TypeError(f"expected Iterable 'args' value for {name}, found {args!r}")
+    for item in args:
+        if not isinstance(item, str):
+            raise TypeError(f"expected str 'args' entry for {name}, found {item!r}")
+
+
+def _validate_type_kwargs(name: str, kwargs: Mapping[str, str]):
+    if not isinstance(kwargs, Mapping):
+        raise TypeError(f"expected Mapping 'kwargs' value for {name}, found {kwargs!r}")
+    for key, value in kwargs.items():
+        if not isinstance(key, str):
+            raise TypeError(f"expected str 'kwargs' key for {name}, found {key!r}")
+        if not isinstance(value, str):
+            raise TypeError(f"expected str 'kwargs' value for {name}, found {value!r}")
