@@ -61,3 +61,12 @@ def message_from_data(name: str, data: Mapping[str, Any]) -> MessageType:
 @typechecked
 def type_map_from_data(data: Mapping[str, Mapping[str, Any]]) -> Dict[str, MessageType]:
     return {name: message_from_data(name, type_def) for name, type_def in data.items()}
+
+
+def default_message_types() -> Dict[str, MessageType]:
+    return {
+        'bool': MessageType('bool'),
+        'int': MessageType('int'),
+        'float': MessageType('float'),
+        'string': MessageType('string'),
+    }
