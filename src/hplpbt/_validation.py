@@ -54,3 +54,17 @@ def _validate_param_constraints(name: str, entry: Mapping[str, Any]):
         raise ValueError(f"parameter without a 'type' in {name}")
     if not isinstance(value, str):
         raise TypeError(f"expected str 'type' value for parameter of {name}, found {value!r}")
+
+
+###############################################################################
+###############################################################################
+
+
+@typechecked
+def param_from_data(data: Union[str, Mapping[str, Any]]) -> ParameterDefinition:
+    if isinstance(data, str):
+        data = {'type': data}
+    name: str = data.get('name', '')
+    type_string: str = check_type(data['type'], str)
+    return ParameterDefinition(type_string, name=name)
+
