@@ -19,6 +19,7 @@ from typeguard import check_type, typechecked
 @frozen
 class ParameterDefinition:
     type: str
+    constraints: Mapping[str, Any] = field(factory=dict)
 
     @property
     def is_array(self) -> bool:
@@ -47,7 +48,8 @@ def param_from_data(data: Union[str, Mapping[str, Any]]) -> ParameterDefinition:
         data = {'type': data}
     # name: str = data.get('name', '')
     type_string: str = check_type(data['type'], str)
-    return ParameterDefinition(type_string)
+    constraints = {key: value for key, value in data.items() if key != 'type'}
+    return ParameterDefinition(type_string, constraints=constraints)
 
 
 @typechecked
