@@ -91,6 +91,7 @@ class MessageStrategyBuilder:
         factory=list,
         validator=deep_iterable(instance_of(HplProperty), iterable_validator=instance_of(Iterable))
     )
+    _cache: Mapping[str, MessageStrategy] = field(factory=dict, init=False, eq=False, repr=False)
 
     @input_channels.validator
     def _check_all_channels_defined(self, _attribute, channels: Mapping[str, str]) -> None:
