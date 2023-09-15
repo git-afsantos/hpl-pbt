@@ -161,4 +161,9 @@ class MessageStrategyBuilder:
         return strategies
 
     def _strategy_for_type(self, type_def: MessageType) -> MessageStrategy:
-        return MessageStrategy(repr(type_def))
+        strategy = self._cache.get(type_def.name)
+        if strategy is not None:
+            return strategy
+        strategy = MessageStrategy(repr(type_def))
+        self._cache[type_def.name] = strategy
+        return strategy
