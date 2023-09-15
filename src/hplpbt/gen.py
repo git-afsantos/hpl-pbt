@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Final, Iterable, List, Mapping, Optional, Tuple, Union
+from typing import Any, Container, Final, Iterable, List, Mapping, Optional, Tuple, Union
 
 from pathlib import Path
 
@@ -15,7 +15,7 @@ from hpl.rewrite import canonical_form
 
 from hplpbt.logic import split_assumptions
 from hplpbt.strategies.messages import strategies_from_spec
-from hplpbt.types import type_map_from_data
+from hplpbt.types import default_message_types, type_map_from_data
 
 ###############################################################################
 # Constants
@@ -108,7 +108,7 @@ def _validate_msg_types(msg_types: Mapping[str, Mapping[str, Any]]):
                 f"expected Mapping[str, Any] values for each '{MSG_TYPES_KEY_TYPEDEFS}' key,"
                 f' found {value!r}'
             )
-        _validate_type_def(key, value)
+        _validate_type_def(key, value, data)
         typedefs.add(key)
     messages: Mapping[str, str] = msg_types[MSG_TYPES_KEY_CHANNELS]
     for key, value in messages.items():
@@ -123,53 +123,51 @@ def _validate_msg_types(msg_types: Mapping[str, Mapping[str, Any]]):
             raise ValueError(f"unknown message type {value!r}")
 
 
-def _validate_type_def(name: str, type_def: Mapping[str, Any]):
+def _validate_type_def(name: str, type_def: Mapping[str, Any], custom_types: Container[str]):
     module: Optional[str] = type_def.get('import')
     if module is not None and not isinstance(module, str):
         raise TypeError(f"expected str 'import' value for {name}, found {module!r}")
     try:
-        _validate_type_pos_args(type_def.get('args', ()))
-        _validate_type_kwargs(type_def.get('kwargs', {}))
+        _validate_type_pos_args(type_def.get('args', ()), custom_types)
+        _validate_type_kwargs(type_def.get('kwargs', {}), custom_types)
     except TypeError as err:
         raise TypeError(f"in type definition '{name}': {err}") from err
     except ValueError as err:
         raise ValueError(f"in type definition '{name}': {err}") from err
 
 
-def _validate_type_pos_args(args: Iterable[Union[str, Mapping[str, Any]]]):
+def _validate_type_pos_args(args: Iterable[str], custom_types: Container[str]):
     if not isinstance(args, Iterable):
         raise TypeError(f"expected Iterable 'args' value, found {args!r}")
     for param_type in args:
         try:
-            _validate_param_type(param_type)
+            _validate_param_type(param_type, custom_types)
         except TypeError as err:
             raise TypeError(f"in 'args' entry: {err}") from err
         except ValueError as err:
             raise ValueError(f"in 'args' entry: {err}") from err
 
 
-def _validate_type_kwargs(kwargs: Mapping[str, Union[str, Mapping[str, Any]]]):
+def _validate_type_kwargs(kwargs: Mapping[str, str], custom_types: Container[str]):
     if not isinstance(kwargs, Mapping):
         raise TypeError(f"expected Mapping 'kwargs' value, found {kwargs!r}")
     for name, param_type in kwargs.items():
         if not isinstance(name, str):
             raise TypeError(f"expected str 'kwargs' key, found {name!r}")
         try:
-            _validate_param_type(param_type)
+            _validate_param_type(param_type, custom_types)
         except TypeError as err:
             raise TypeError(f"in 'kwargs' value for '{name}': {err}") from err
         except ValueError as err:
             raise ValueError(f"in 'kwargs' value for '{name}': {err}") from err
 
 
-def _validate_param_type(param_type: Union[str, Mapping[str, Any]]):
-    if isinstance(param_type, str):
+def _validate_param_type(param_type: str, custom_types: Container[str]):
+    if not isinstance(param_type, str):
+        raise TypeError(f"expected str parameter type, found {param_type!r}")
+    param_type = param_type.split('[', maxsplit=1)[0]
+    if param_type in custom_types:
         return
-    if isinstance(param_type, Mapping):
-        type_name = param_type.get('type')
-        if type_name is None:
-            raise ValueError(f"missing key 'type'")
-        if not isinstance(type_name, str):
-            raise TypeError(f"expected str for value of parameter 'type', found {type_name!r}")
+    if param_type in default_message_types():
         return
-    raise TypeError(f"expected str|Mapping parameter type, found {param_type!r}")
+    raise ValueError(f'unknown parameter type: {param_type!r}')
