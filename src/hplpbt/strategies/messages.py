@@ -21,9 +21,16 @@ from hplpbt.types import MessageType
 
 
 @frozen
+class StrategyArgument:
+    name: str
+    strategy: str
+
+
+@frozen
 class MessageStrategy:
     name: str
-    message_type: str
+    return_type: str
+    arguments: Iterable[StrategyArgument] = field(factory=tuple, converter=tuple)
 
 
 ###############################################################################
@@ -165,6 +172,24 @@ class MessageStrategyBuilder:
         strategy = self._cache.get(type_def.name)
         if strategy is not None:
             return strategy
-        strategy = MessageStrategy(type_def.name, type_def.qualified_name)
+
+        arguments = []
+        for param in type_def.positional_parameters:
+            if param.is_array:
+                arg = StrategyArgument('arg', 'list')
+                # FIXME strategy sub arguments
+            else:
+                arg = StrategyArgument('arg', param.base_type)
+            arguments.append(arg)
+
+        for name, param in type_def.keyword_parameters.items():
+            if param.is_array:
+                arg = StrategyArgument(name, 'list')
+                # FIXME strategy sub arguments
+            else:
+                arg = StrategyArgument(name, param.base_type)
+            arguments.append(arg)
+
+        strategy = MessageStrategy(type_def.name, type_def.qualified_name, arguments=arguments)
         self._cache[type_def.name] = strategy
         return strategy
