@@ -89,6 +89,10 @@ class MessageType:
         if not self.class_name:
             object.__setattr__(self, 'class_name', self.name)
 
+    @property
+    def qualified_name(self) -> str:
+        return self.class_name if not self.package else f'{self.package}.{self.class_name}'
+
     @classmethod
     @typechecked
     def from_data(cls, name: str, data: Mapping[str, Any]) -> 'MessageType':
@@ -117,7 +121,7 @@ class MessageType:
         )
 
     def __str__(self) -> str:
-        return self.name if self.package is None else f'{self.package}.{self.name}'
+        return f'{self.name} ({self.qualified_name})'
 
 
 ################################################################################
