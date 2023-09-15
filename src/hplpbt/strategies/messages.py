@@ -23,6 +23,7 @@ from hplpbt.types import MessageType
 @frozen
 class MessageStrategy:
     name: str
+    message_type: str
 
 
 ###############################################################################
@@ -164,6 +165,6 @@ class MessageStrategyBuilder:
         strategy = self._cache.get(type_def.name)
         if strategy is not None:
             return strategy
-        strategy = MessageStrategy(repr(type_def))
+        strategy = MessageStrategy(type_def.name, type_def.qualified_name)
         self._cache[type_def.name] = strategy
         return strategy
