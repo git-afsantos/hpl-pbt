@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Dict, Iterable, Mapping, Union
+from typing import Any, Dict, Iterable, Mapping
 
 from enum import Enum
 
