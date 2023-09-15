@@ -15,7 +15,7 @@ from hpl.rewrite import canonical_form
 
 from hplpbt.logic import split_assumptions
 from hplpbt.strategies.messages import strategies_from_spec
-from hplpbt.types import default_message_types, type_map_from_data
+from hplpbt.types import BuiltinParameterType, type_map_from_data
 
 ###############################################################################
 # Constants
@@ -166,8 +166,9 @@ def _validate_param_type(param_type: str, custom_types: Container[str]):
     if not isinstance(param_type, str):
         raise TypeError(f"expected str parameter type, found {param_type!r}")
     param_type = param_type.split('[', maxsplit=1)[0]
-    if param_type in custom_types:
-        return
-    if param_type in default_message_types():
-        return
-    raise ValueError(f'unknown parameter type: {param_type!r}')
+    try:
+        BuiltinParameterType(param_type)
+    except ValueError:
+        if param_type in custom_types:
+            return
+        raise ValueError(f'undefined parameter type: {param_type!r}')

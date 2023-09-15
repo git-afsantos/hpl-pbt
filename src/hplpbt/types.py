@@ -5,7 +5,9 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Dict, Iterable, Mapping
+from typing import Any, Dict, Iterable, Mapping, Union
+
+from enum import Enum
 
 from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of, matches_re
@@ -19,10 +21,36 @@ from typeguard import check_type, typechecked
 ################################################################################
 
 
+class BuiltinParameterType(Enum):
+    BOOL = 'bool'
+    UINT = 'uint'
+    UINT8 = 'uint8'
+    UINT16 = 'uint16'
+    UINT32 = 'uint32'
+    UINT64 = 'uint64'
+    INT = 'int'
+    INT8 = 'int8'
+    INT16 = 'int16'
+    INT32 = 'int32'
+    INT64 = 'int64'
+    FLOAT = 'float'
+    FLOAT32 = 'float32'
+    FLOAT64 = 'float64'
+    STRING = 'string'
+
+
 @frozen
 class ParameterDefinition:
     base_type: str
     is_array: bool = False
+
+    @property
+    def is_builtin(self) -> bool:
+        try:
+            BuiltinParameterType(self.base_type)
+            return True
+        except ValueError:
+            return False
 
     @classmethod
     def from_type_string(cls, type_string: str) -> 'ParameterDefinition':
@@ -104,12 +132,3 @@ def message_from_data(name: str, data: Mapping[str, Any]) -> MessageType:
 @typechecked
 def type_map_from_data(data: Mapping[str, Mapping[str, Any]]) -> Dict[str, MessageType]:
     return {name: message_from_data(name, type_def) for name, type_def in data.items()}
-
-
-def default_message_types() -> Dict[str, MessageType]:
-    return {
-        'bool': MessageType('bool'),
-        'int': MessageType('int'),
-        'float': MessageType('float'),
-        'string': MessageType('string'),
-    }
