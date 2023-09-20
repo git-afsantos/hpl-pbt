@@ -377,14 +377,14 @@ class Statement:
 @frozen
 class Assignment(Statement):
     variable: str
-    expression: HplExpression
+    generator: ValueGenerator
 
     @property
     def type(self) -> StatementType:
         return StatementType.ASSIGN
 
     def __str__(self) -> str:
-        return f'{self.variable} = {self.expression}'
+        return f'{self.variable} = {self.generator}'
 
 
 ################################################################################
