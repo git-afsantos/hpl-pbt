@@ -5,15 +5,16 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Iterable, Mapping, Optional, Set, Union
+from typing import Any, Iterable, List, Mapping, Optional, Set, Union
 
 from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import HplEvent, HplProperty, HplSimpleEvent, HplSpecification
+from hplpbt.strategies.ast import Assignment, ConstantValue, Literal, RandomArray, RandomBool, RandomFloat, RandomInt, RandomString, Statement
 # from hpl.types import TypeToken
 from typeguard import typechecked
 
-from hplpbt.types import MessageType
+from hplpbt.types import MessageType, ParameterDefinition
 
 ################################################################################
 # Message Strategy
@@ -37,7 +38,13 @@ class MessageStrategy:
     name: str
     return_type: str
     arguments: Iterable[StrategyArgument] = field(factory=tuple, converter=tuple)
-    body: Iterable[str] = field(factory=tuple, converter=tuple)
+    body: Iterable[Statement] = field(factory=tuple, converter=tuple)
+
+    def __str__(self) -> str:
+        parts = ['@composite', f'def {self.name}(draw) -> {self.return_type}:']
+        for statement in self.body:
+            parts.append(f'    {statement}')
+        return '\n'.join(parts)
 
 
 ###############################################################################
@@ -180,23 +187,29 @@ class MessageStrategyBuilder:
         if strategy is not None:
             return strategy
 
-        arguments = []
+        body = []
         for param in type_def.positional_parameters:
-            if param.is_array:
-                arg = StrategyArgument('arg', 'list')
-                # FIXME strategy sub arguments
-            else:
-                arg = StrategyArgument('arg', param.base_type)
-            arguments.append(arg)
-
+            body.extend(self._generate_param('arg', param))
         for name, param in type_def.keyword_parameters.items():
-            if param.is_array:
-                arg = StrategyArgument(name, 'list')
-                # FIXME strategy sub arguments
-            else:
-                arg = StrategyArgument(name, param.base_type)
-            arguments.append(arg)
+            body.extend(self._generate_param(name, param))
 
-        strategy = MessageStrategy(type_def.name, type_def.qualified_name, arguments=arguments)
+        strategy = MessageStrategy(type_def.name, type_def.qualified_name, body=body)
         self._cache[type_def.name] = strategy
         return strategy
+
+    def _generate_param(self, name: str, param: ParameterDefinition) -> List[Statement]:
+        statements = []
+        if param.base_type == 'bool':
+            s = RandomBool()
+        elif param.base_type == 'int':
+            s = RandomInt()
+        elif param.base_type == 'float':
+            s = RandomFloat()
+        elif param.base_type == 'string':
+            s = RandomString()
+        else:
+            s = ConstantValue(Literal(param.base_type))
+        if param.is_array:
+            s = RandomArray(s)
+        statements.append(Assignment(name, s))
+        return statements
