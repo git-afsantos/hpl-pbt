@@ -28,9 +28,16 @@ class StrategyArgument:
 
 @frozen
 class MessageStrategy:
+    """
+    This is likely to generate a function body that is divided in three stages:
+    1. initialize necessary arguments and other independent variables
+    2. initialize the message object, using values from stage 1
+    3. initialize dependent fields of the message itself and run assumptions
+    """
     name: str
     return_type: str
     arguments: Iterable[StrategyArgument] = field(factory=tuple, converter=tuple)
+    body: Iterable[str] = field(factory=tuple, converter=tuple)
 
 
 ###############################################################################
