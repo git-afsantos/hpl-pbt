@@ -22,27 +22,15 @@ from typeguard import check_type
 class ExpressionType(Enum):
     LITERAL = auto()
     REFERENCE = auto()
-    RANDOM_BOOL = auto()
-    RANDOM_INT = auto()
-    RANDOM_FLOAT = auto()
-    RANDOM_STRING = auto()
-    RANDOM_ARRAY = auto()
-    RANDOM_SAMPLE = auto()
-
-    @property
-    def is_random_value(self) -> bool:
-        return self in (
-            ExpressionType.RANDOM_BOOL,
-            ExpressionType.RANDOM_INT,
-            ExpressionType.RANDOM_FLOAT,
-            ExpressionType.RANDOM_STRING,
-            ExpressionType.RANDOM_ARRAY,
-            ExpressionType.RANDOM_SAMPLE,
-        )
 
 
 @frozen
 class Expression:
+    """
+    Base class that represents concrete values in the AST, for example, values
+    given as function arguments and values used within other expressions.
+    """
+
     @property
     def type(self) -> ExpressionType:
         raise NotImplementedError()
@@ -54,34 +42,6 @@ class Expression:
     @property
     def is_reference(self) -> bool:
         return self.type == ExpressionType.REFERENCE
-
-    @property
-    def is_random_value(self) -> bool:
-        return self.type.is_random_value
-
-    @property
-    def is_random_bool(self) -> bool:
-        return self.type == ExpressionType.RANDOM_BOOL
-
-    @property
-    def is_random_int(self) -> bool:
-        return self.type == ExpressionType.RANDOM_INT
-
-    @property
-    def is_random_float(self) -> bool:
-        return self.type == ExpressionType.RANDOM_FLOAT
-
-    @property
-    def is_random_string(self) -> bool:
-        return self.type == ExpressionType.RANDOM_STRING
-
-    @property
-    def is_random_array(self) -> bool:
-        return self.type == ExpressionType.RANDOM_ARRAY
-
-    @property
-    def is_random_sample(self) -> bool:
-        return self.type == ExpressionType.RANDOM_SAMPLE
 
 
 @frozen
@@ -156,33 +116,88 @@ class Reference(Expression):
         return self.variable
 
 
+################################################################################
+# Strategy AST - Value Generators
+################################################################################
+
+
+class GeneratorType(Enum):
+    CONSTANT = auto()
+    BOOL = auto()
+    INT = auto()
+    FLOAT = auto()
+    STRING = auto()
+    ARRAY = auto()
+    SAMPLE = auto()
+
+
 @frozen
-class RandomBool(Expression):
+class ValueGenerator:
+    """
+    Base class that represents calls to strategies within a function's body,
+    for example, to generate arguments and other variables.
+    """
+
     @property
-    def type(self) -> ExpressionType:
-        return ExpressionType.RANDOM_BOOL
+    def type(self) -> GeneratorType:
+        raise NotImplementedError()
+
+    @property
+    def is_constant(self) -> bool:
+        return self.type == GeneratorType.CONSTANT
+
+    @property
+    def is_bool(self) -> bool:
+        return self.type == GeneratorType.BOOL
+
+    @property
+    def is_int(self) -> bool:
+        return self.type == GeneratorType.INT
+
+    @property
+    def is_float(self) -> bool:
+        return self.type == GeneratorType.FLOAT
+
+    @property
+    def is_string(self) -> bool:
+        return self.type == GeneratorType.STRING
+
+    @property
+    def is_array(self) -> bool:
+        return self.type == GeneratorType.ARRAY
+
+    @property
+    def is_sample(self) -> bool:
+        return self.type == GeneratorType.SAMPLE
+
+
+@frozen
+class RandomBool(ValueGenerator):
+    @property
+    def type(self) -> GeneratorType:
+        return GeneratorType.BOOL
 
     def __str__(self) -> str:
         return 'booleans()'
 
 
 @frozen
-class RandomInt(Expression):
-    min_value: Expression = field(factory=Literal.none)
-    max_value: Expression = field(factory=Literal.none)
+class RandomInt(ValueGenerator):
+    min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    max_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
 
     @property
-    def type(self) -> ExpressionType:
-        return ExpressionType.RANDOM_INT
+    def type(self) -> GeneratorType:
+        return GeneratorType.INT
 
     def __str__(self) -> str:
         return f'integers(min_value={self.min_value}, max_value={self.max_value})'
 
 
 @frozen
-class RandomFloat(Expression):
-    min_value: Expression = field(factory=Literal.none)
-    max_value: Expression = field(factory=Literal.none)
+class RandomFloat(ValueGenerator):
+    min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    max_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     # allow_nan: bool = True
     # allow_infinity: bool = True
     # allow_subnormal: bool = True
@@ -191,8 +206,8 @@ class RandomFloat(Expression):
     # exclude_max: bool = False
 
     @property
-    def type(self) -> ExpressionType:
-        return ExpressionType.RANDOM_FLOAT
+    def type(self) -> GeneratorType:
+        return GeneratorType.FLOAT
 
     def __str__(self) -> str:
         # min_value=None
@@ -207,14 +222,14 @@ class RandomFloat(Expression):
 
 
 @frozen
-class RandomString(Expression):
-    min_size: Expression = field(factory=Literal.zero)
-    max_size: Expression = field(factory=Literal.none)
+class RandomString(ValueGenerator):
+    min_size: Expression = field(factory=Literal.zero, validator=instance_of(Expression))
+    max_size: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     # alphabet: Optional[Expression] = None
 
     @property
-    def type(self) -> ExpressionType:
-        return ExpressionType.RANDOM_STRING
+    def type(self) -> GeneratorType:
+        return GeneratorType.STRING
 
     def __str__(self) -> str:
         # alphabet=characters(codec='utf-8')
@@ -224,20 +239,15 @@ class RandomString(Expression):
 
 
 @frozen
-class RandomArray(Expression):
-    elements: Expression = field(factory=RandomBool, validator=instance_of(Expression))
-    min_size: Expression = field(factory=Literal.zero)
-    max_size: Expression = field(factory=Literal.none)
+class RandomArray(ValueGenerator):
+    elements: ValueGenerator = field(validator=instance_of(ValueGenerator))
+    min_size: Expression = field(factory=Literal.zero, validator=instance_of(Expression))
+    max_size: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     unique: bool = False
 
-    @elements.validator
-    def _check_elements(self, _attribute, value: Expression):
-        if not value.is_random_value:
-            raise ValueError(f'expected a value generator, got {value!r}')
-
     @property
-    def type(self) -> ExpressionType:
-        return ExpressionType.RANDOM_ARRAY
+    def type(self) -> GeneratorType:
+        return GeneratorType.ARRAY
 
     def __str__(self) -> str:
         # min_size=0
@@ -253,22 +263,16 @@ class RandomArray(Expression):
 
 
 @frozen
-class RandomSample(Expression):
-    elements: Iterable[Expression] = field(factory=tuple, converter=tuple)
-
-    @elements.validator
-    def _check_elements(self, _attribute, values: Iterable[Expression]):
-        for value in values:
-            value: Expression = check_type(value, Expression)
-            if value.is_literal:
-                continue
-            if value.is_reference:
-                continue
-            raise ValueError(f'expression must not be a generator: {value!r}')
+class RandomSample(ValueGenerator):
+    elements: Iterable[Expression] = field(
+        factory=tuple,
+        converter=tuple,
+        validator=deep_iterable(instance_of(Expression)),
+    )
 
     @property
-    def type(self) -> ExpressionType:
-        return ExpressionType.RANDOM_SAMPLE
+    def type(self) -> GeneratorType:
+        return GeneratorType.SAMPLE
 
     def __str__(self) -> str:
         return f'sampled_from({self.elements})'
