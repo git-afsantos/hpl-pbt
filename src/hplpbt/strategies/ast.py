@@ -5,14 +5,13 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, Set
 
 from enum import auto, Enum
 
 from attrs import field, frozen
 from attrs.validators import deep_iterable, instance_of
 from hpl.ast import HplExpression
-from typeguard import check_type
 
 ################################################################################
 # Strategy AST - Value Expressions
@@ -42,6 +41,9 @@ class Expression:
     @property
     def is_reference(self) -> bool:
         return self.type == ExpressionType.REFERENCE
+
+    def references(self) -> Set[str]:
+        raise NotImplementedError()
 
 
 @frozen
@@ -100,6 +102,9 @@ class Literal(Expression):
     def empty_list(cls) -> 'Literal':
         return cls([])
 
+    def references(self) -> Set[str]:
+        return set()
+
     def __str__(self) -> str:
         return repr(self.value)
 
@@ -111,6 +116,9 @@ class Reference(Expression):
     @property
     def type(self) -> ExpressionType:
         return ExpressionType.REFERENCE
+
+    def references(self) -> Set[str]:
+        return {self.variable}
 
     def __str__(self) -> str:
         return self.variable
@@ -170,6 +178,9 @@ class ValueGenerator:
     def is_sample(self) -> bool:
         return self.type == GeneratorType.SAMPLE
 
+    def dependencies(self) -> Set[str]:
+        return set()
+
 
 @frozen
 class ConstantValue(ValueGenerator):
@@ -183,6 +194,9 @@ class ConstantValue(ValueGenerator):
     def value(self) -> Expression:
         return self.expression  # alias
 
+    def dependencies(self) -> Set[str]:
+        return self.expression.references()
+
     def __str__(self) -> str:
         return f'just({self.expression})'
 
@@ -192,6 +206,9 @@ class RandomBool(ValueGenerator):
     @property
     def type(self) -> GeneratorType:
         return GeneratorType.BOOL
+
+    def dependencies(self) -> Set[str]:
+        return set()
 
     def __str__(self) -> str:
         return 'booleans()'
@@ -205,6 +222,9 @@ class RandomInt(ValueGenerator):
     @property
     def type(self) -> GeneratorType:
         return GeneratorType.INT
+
+    def dependencies(self) -> Set[str]:
+        return self.min_value.references() | self.max_value.references()
 
     def __str__(self) -> str:
         return f'integers(min_value={self.min_value}, max_value={self.max_value})'
@@ -224,6 +244,9 @@ class RandomFloat(ValueGenerator):
     @property
     def type(self) -> GeneratorType:
         return GeneratorType.FLOAT
+
+    def dependencies(self) -> Set[str]:
+        return self.min_value.references() | self.max_value.references()
 
     def __str__(self) -> str:
         # min_value=None
@@ -247,6 +270,9 @@ class RandomString(ValueGenerator):
     def type(self) -> GeneratorType:
         return GeneratorType.STRING
 
+    def dependencies(self) -> Set[str]:
+        return self.min_size.references() | self.max_size.references()
+
     def __str__(self) -> str:
         # alphabet=characters(codec='utf-8')
         # min_size=0
@@ -264,6 +290,9 @@ class RandomArray(ValueGenerator):
     @property
     def type(self) -> GeneratorType:
         return GeneratorType.ARRAY
+
+    def dependencies(self) -> Set[str]:
+        return self.min_size.references() | self.max_size.references()
 
     def __str__(self) -> str:
         # min_size=0
@@ -289,6 +318,12 @@ class RandomSample(ValueGenerator):
     @property
     def type(self) -> GeneratorType:
         return GeneratorType.SAMPLE
+
+    def dependencies(self) -> Set[str]:
+        names = set()
+        for expresion in self.elements:
+            names.update(expresion.references())
+        return names
 
     def __str__(self) -> str:
         return f'sampled_from({self.elements})'
