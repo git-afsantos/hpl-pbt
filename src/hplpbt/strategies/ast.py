@@ -330,32 +330,38 @@ class RandomSample(ValueGenerator):
 
 
 ################################################################################
-# Strategy AST
+# Strategy AST - Statements
 ################################################################################
 
 
-@frozen
-class StrategyCondition:
-    pass
+class StatementType(Enum):
+    ASSIGN = auto()
+    ASSUME = auto()
+    LOOP = auto()
+    BLOCK = auto()
 
 
 @frozen
 class Statement:
     @property
+    def type(self) -> StatementType:
+        raise NotImplementedError()
+
+    @property
     def is_assignment(self) -> bool:
-        return False
+        return self.type == StatementType.ASSIGN
 
     @property
     def is_assumption(self) -> bool:
-        return False
+        return self.type == StatementType.ASSUME
 
     @property
     def is_loop(self) -> bool:
-        return False
+        return self.type == StatementType.LOOP
 
     @property
     def is_block(self) -> bool:
-        return False
+        return self.type == StatementType.BLOCK
 
     def merge(self, other: 'Statement') -> 'Statement':
         c1 = type(self).__name__
@@ -374,8 +380,8 @@ class Assignment(Statement):
     expression: HplExpression
 
     @property
-    def is_assignment(self) -> bool:
-        return True
+    def type(self) -> StatementType:
+        return StatementType.ASSIGN
 
     def __str__(self) -> str:
         return f'{self.variable} = {self.expression}'
@@ -391,8 +397,8 @@ class Assumption(Statement):
     expression: HplExpression
 
     @property
-    def is_assumption(self) -> bool:
-        return True
+    def type(self) -> StatementType:
+        return StatementType.ASSUME
 
     def __str__(self) -> str:
         return f'assume({self.expression})'
