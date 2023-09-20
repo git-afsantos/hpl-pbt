@@ -172,6 +172,22 @@ class ValueGenerator:
 
 
 @frozen
+class ConstantValue(ValueGenerator):
+    expression: Expression = field(validator=instance_of(Expression))
+
+    @property
+    def type(self) -> GeneratorType:
+        return GeneratorType.CONSTANT
+
+    @property
+    def value(self) -> Expression:
+        return self.expression  # alias
+
+    def __str__(self) -> str:
+        return f'just({self.expression})'
+
+
+@frozen
 class RandomBool(ValueGenerator):
     @property
     def type(self) -> GeneratorType:
