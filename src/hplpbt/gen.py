@@ -76,7 +76,7 @@ def generate_tests(
     parts.append('# behaviour')
     parts.extend(map(repr, map(str, behaviour)))
     parts.append('# strategies')
-    parts.extend(map(repr, map(str, msg_strategies)))
+    parts.extend(map(str, msg_strategies))
     return '\n'.join(parts)
 
 
