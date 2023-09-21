@@ -174,11 +174,17 @@ class MessageStrategyBuilder:
         return set(strat for msg in event.simple_events() for strat in self._build_strategies(msg))
 
     def _build_strategies(self, event: HplSimpleEvent) -> Set[MessageStrategy]:
-        strategies = set()
         if event.name not in self.input_channels:
-            return strategies
+            return set()
         type_name: str = self.input_channels[event.name]
         type_def: MessageType = self.type_defs[type_name]
+        return self._strategies_for_type(type_def)
+
+    def _strategies_for_type(self, type_def: MessageType) -> Set[MessageStrategy]:
+        strategies = set()
+        for type_name in type_def.dependencies():
+            other: MessageType = self.type_defs[type_name]
+            strategies.update(self._strategies_for_type(other))
         strategies.add(self._strategy_for_type(type_def))
         return strategies
 
