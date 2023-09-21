@@ -5,13 +5,14 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Iterable, Optional, Set
+from typing import Any, Iterable, Mapping, Optional, Set, Tuple
 
 from enum import auto, Enum
 
 from attrs import field, frozen
 from attrs.validators import deep_iterable, instance_of, optional
 from hpl.ast import HplExpression
+from typeguard import check_type
 
 ################################################################################
 # Strategy AST - Value Expressions
@@ -21,6 +22,8 @@ from hpl.ast import HplExpression
 class ExpressionType(Enum):
     LITERAL = auto()
     REFERENCE = auto()
+    CALL = auto()
+    DRAW = auto()
 
 
 @frozen
@@ -41,6 +44,14 @@ class Expression:
     @property
     def is_reference(self) -> bool:
         return self.type == ExpressionType.REFERENCE
+
+    @property
+    def is_function_call(self) -> bool:
+        return self.type == ExpressionType.CALL
+
+    @property
+    def is_value_draw(self) -> bool:
+        return self.type == ExpressionType.DRAW
 
     def references(self) -> Set[str]:
         raise NotImplementedError()
@@ -122,6 +133,46 @@ class Reference(Expression):
 
     def __str__(self) -> str:
         return self.variable
+
+
+@frozen
+class FunctionCall(Expression):
+    function: str
+    arguments: Iterable[Expression] = field(factory=tuple, converter=tuple)
+    keyword_arguments: Iterable[Tuple[str, Expression]] = field(factory=tuple, converter=tuple)
+
+    @property
+    def type(self) -> ExpressionType:
+        return ExpressionType.CALL
+
+    def references(self) -> Set[str]:
+        names = set()
+        for arg in self.arguments:
+            names.update(arg.references())
+        for _name, arg in self.keyword_arguments:
+            names.update(arg.references())
+        return names
+
+    def __str__(self) -> str:
+        args = list(self.arguments)
+        args.extend(f'{key}={arg}' for key, arg in self.keyword_arguments)
+        args = ', '.join(args)
+        return f'{self.function}({args})'
+
+
+@frozen
+class ValueDraw(Expression):
+    strategy: 'ValueGenerator'
+
+    @property
+    def type(self) -> ExpressionType:
+        return ExpressionType.DRAW
+
+    def references(self) -> Set[str]:
+        return self.strategy.dependencies()
+
+    def __str__(self) -> str:
+        return f'draw({self.strategy})'
 
 
 ################################################################################
@@ -446,15 +497,21 @@ class Statement:
 
 @frozen
 class Assignment(Statement):
-    variable: str
-    generator: ValueGenerator
+    variable: str = field(validator=instance_of(str))
+    expression: Expression = field(validator=instance_of(Expression))
 
     @property
     def type(self) -> StatementType:
         return StatementType.ASSIGN
 
+    @classmethod
+    def draw(cls, variable: str, strategy: ValueGenerator) -> 'Assignment':
+        strategy = check_type(strategy, ValueGenerator)
+        expression = ValueDraw(strategy)
+        return cls(variable, expression)
+
     def __str__(self) -> str:
-        return f'{self.variable} = {self.generator}'
+        return f'{self.variable} = {self.expression}'
 
 
 ################################################################################

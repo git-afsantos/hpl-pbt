@@ -5,13 +5,14 @@
 # Imports
 ###############################################################################
 
-from typing import Iterable, List, Mapping, Optional, Set, Union
+from typing import Iterable, List, Mapping, Optional, Set, Tuple, Union
 
 from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import HplEvent, HplProperty, HplSimpleEvent, HplSpecification
 from hplpbt.strategies.ast import (
     Assignment,
+    FunctionCall,
     RandomArray,
     RandomBool,
     RandomFloat,
@@ -21,7 +22,7 @@ from hplpbt.strategies.ast import (
     Statement,
 )
 # from hpl.types import TypeToken
-from typeguard import typechecked
+from typeguard import check_type, typechecked
 
 from hplpbt.types import MessageType, ParameterDefinition
 
@@ -46,14 +47,29 @@ class MessageStrategy:
     """
     name: str
     return_type: str
+    return_variable: str
     arguments: Iterable[StrategyArgument] = field(factory=tuple, converter=tuple)
     body: Iterable[Statement] = field(factory=tuple, converter=tuple)
 
+    @body.validator
+    def _check_body(self, _attribute, value: Iterable[Statement]):
+        body: Iterable[Statement] = check_type(value, Iterable[Statement])
+        for statement in body:
+            if statement.is_assignment:
+                assignment: Assignment = check_type(statement, Assignment)
+                if assignment.variable == self.return_variable:
+                    return
+        raise ValueError(f'variable {self.return_variable} is undefined in {body!r}')
+
     def __str__(self) -> str:
-        parts = ['@composite', f'def gen_{self.name}(draw) -> {self.return_type}:']
+        parts = ['@composite', f'def {self.name}(draw) -> {self.return_type}:']
         for statement in self.body:
             parts.append(f'    {statement}')
-        parts.append(f'    return {self.return_type}()')
+        # check the last statement for optimization
+        if statement.is_assignment and statement.variable == self.return_variable:
+            parts[-1] = f'    return {statement.expression}'
+        else:
+            parts.append(f'    return {self.return_variable}')
         return '\n'.join(parts)
 
 
@@ -204,12 +220,26 @@ class MessageStrategyBuilder:
             return strategy
 
         body = []
-        for param in type_def.positional_parameters:
-            body.extend(self._generate_param('arg', param))
+        args = []
+        for i, param in enumerate(type_def.positional_parameters):
+            variable = f'arg{i}'
+            body.extend(self._generate_param(variable, param))
+            args.append(variable)
+        kwargs = []
+        i += 1
         for name, param in type_def.keyword_parameters.items():
-            body.extend(self._generate_param(name, param))
+            variable = f'arg{i}'
+            body.extend(self._generate_param(variable, param))
+            kwargs.append((name, variable))
+            i += 1
 
-        strategy = MessageStrategy(type_def.name, type_def.qualified_name, body=body)
+        name = type_def.qualified_name
+        constructor = FunctionCall(name, arguments=args, keyword_arguments=kwargs)
+        ret_var = 'msg'
+        body.append(Assignment(ret_var, constructor))
+
+        ret_type = type_def.qualified_name
+        strategy = MessageStrategy(f'gen_{type_def.name}', ret_type, ret_var, body=body)
         self._cache[type_def.name] = strategy
         return strategy
 
@@ -227,5 +257,5 @@ class MessageStrategyBuilder:
             s = RandomSpecial(param.base_type)
         if param.is_array:
             s = RandomArray(s)
-        statements.append(Assignment(name, s))
+        statements.append(Assignment.draw(name, s))
         return statements
