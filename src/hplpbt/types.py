@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Dict, Iterable, Mapping
+from typing import Any, Dict, Iterable, Mapping, Set
 
 from enum import Enum
 
@@ -119,6 +119,11 @@ class MessageType:
             keyword_parameters=kwparams,
             precondition=predicate,
         )
+
+    def dependencies(self) -> Set[str]:
+        deps = {p.base_type for p in self.positional_parameters if not p.is_builtin}
+        deps.update(p.base_type for p in self.keyword_parameters.values() if not p.is_builtin)
+        return deps
 
     def __str__(self) -> str:
         return f'{self.name} ({self.qualified_name})'
