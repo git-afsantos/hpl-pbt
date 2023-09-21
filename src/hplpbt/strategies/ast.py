@@ -5,12 +5,12 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Iterable, Set
+from typing import Any, Iterable, Optional, Set
 
 from enum import auto, Enum
 
 from attrs import field, frozen
-from attrs.validators import deep_iterable, instance_of
+from attrs.validators import deep_iterable, instance_of, optional
 from hpl.ast import HplExpression
 
 ################################################################################
@@ -216,8 +216,16 @@ class RandomBool(ValueGenerator):
 
 @frozen
 class RandomInt(ValueGenerator):
-    min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
-    max_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    # min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    # max_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    min_value: Optional[Expression] = field(
+        default=None,
+        validator=optional(instance_of(Expression)),
+    )
+    max_value: Optional[Expression] = field(
+        default=None,
+        validator=optional(instance_of(Expression)),
+    )
 
     @property
     def type(self) -> GeneratorType:
@@ -227,13 +235,27 @@ class RandomInt(ValueGenerator):
         return self.min_value.references() | self.max_value.references()
 
     def __str__(self) -> str:
-        return f'integers(min_value={self.min_value}, max_value={self.max_value})'
+        args = []
+        if self.min_value is not None:
+            args.append(f'min_value={self.min_value}')
+        if self.max_value is not None:
+            args.append(f'max_value={self.max_value}')
+        args = ', '.join(args)
+        return f'integers({args})'
 
 
 @frozen
 class RandomFloat(ValueGenerator):
-    min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
-    max_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    # min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    # max_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    min_value: Optional[Expression] = field(
+        default=None,
+        validator=optional(instance_of(Expression)),
+    )
+    max_value: Optional[Expression] = field(
+        default=None,
+        validator=optional(instance_of(Expression)),
+    )
     # allow_nan: bool = True
     # allow_infinity: bool = True
     # allow_subnormal: bool = True
@@ -257,13 +279,27 @@ class RandomFloat(ValueGenerator):
         # width=64
         # exclude_min=False
         # exclude_max=False
-        return f'floats(min_value={self.min_value}, max_value={self.max_value})'
+        args = []
+        if self.min_value is not None:
+            args.append(f'min_value={self.min_value}')
+        if self.max_value is not None:
+            args.append(f'max_value={self.max_value}')
+        args = ', '.join(args)
+        return f'floats({args})'
 
 
 @frozen
 class RandomString(ValueGenerator):
-    min_size: Expression = field(factory=Literal.zero, validator=instance_of(Expression))
-    max_size: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    # min_size: Expression = field(factory=Literal.zero, validator=instance_of(Expression))
+    # max_size: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    min_size: Optional[Expression] = field(
+        default=None,
+        validator=optional(instance_of(Expression)),
+    )
+    max_size: Optional[Expression] = field(
+        default=None,
+        validator=optional(instance_of(Expression)),
+    )
     # alphabet: Optional[Expression] = None
 
     @property
@@ -277,15 +313,29 @@ class RandomString(ValueGenerator):
         # alphabet=characters(codec='utf-8')
         # min_size=0
         # max_size=None
-        return f'text(min_size={self.min_size}, max_size={self.max_size})'
+        args = []
+        if self.min_size is not None:
+            args.append(f'min_size={self.min_size}')
+        if self.max_size is not None:
+            args.append(f'max_size={self.max_size}')
+        args = ', '.join(args)
+        return f'text({args})'
 
 
 @frozen
 class RandomArray(ValueGenerator):
     elements: ValueGenerator = field(validator=instance_of(ValueGenerator))
-    min_size: Expression = field(factory=Literal.zero, validator=instance_of(Expression))
-    max_size: Expression = field(factory=Literal.none, validator=instance_of(Expression))
-    unique: bool = False
+    # min_size: Expression = field(factory=Literal.zero, validator=instance_of(Expression))
+    # max_size: Expression = field(factory=Literal.none, validator=instance_of(Expression))
+    # unique: bool = False
+    min_size: Optional[Expression] = field(
+        default=None,
+        validator=optional(instance_of(Expression)),
+    )
+    max_size: Optional[Expression] = field(
+        default=None,
+        validator=optional(instance_of(Expression)),
+    )
 
     @property
     def type(self) -> GeneratorType:
@@ -299,12 +349,13 @@ class RandomArray(ValueGenerator):
         # max_size=None
         # unique_by=None
         # unique=False
-        return (
-            f'lists({self.elements}'
-            f', min_size={self.min_size}'
-            f', max_size={self.max_size}'
-            f', unique={self.unique})'
-        )
+        args = [str(self.elements)]
+        if self.min_size is not None:
+            args.append(f'min_size={self.min_size}')
+        if self.max_size is not None:
+            args.append(f'max_size={self.max_size}')
+        args = ', '.join(args)
+        return f'lists({args})'
 
 
 @frozen
