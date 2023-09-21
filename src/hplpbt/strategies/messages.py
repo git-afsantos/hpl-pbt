@@ -5,12 +5,21 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Iterable, List, Mapping, Optional, Set, Union
+from typing import Iterable, List, Mapping, Optional, Set, Union
 
 from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import HplEvent, HplProperty, HplSimpleEvent, HplSpecification
-from hplpbt.strategies.ast import Assignment, ConstantValue, Literal, RandomArray, RandomBool, RandomFloat, RandomInt, RandomString, Statement
+from hplpbt.strategies.ast import (
+    Assignment,
+    RandomArray,
+    RandomBool,
+    RandomFloat,
+    RandomInt,
+    RandomSpecial,
+    RandomString,
+    Statement,
+)
 # from hpl.types import TypeToken
 from typeguard import typechecked
 
@@ -41,9 +50,10 @@ class MessageStrategy:
     body: Iterable[Statement] = field(factory=tuple, converter=tuple)
 
     def __str__(self) -> str:
-        parts = ['@composite', f'def {self.name}(draw) -> {self.return_type}:']
+        parts = ['@composite', f'def gen_{self.name}(draw) -> {self.return_type}:']
         for statement in self.body:
             parts.append(f'    {statement}')
+        parts.append(f'    return {self.return_type}()')
         return '\n'.join(parts)
 
 
@@ -214,7 +224,7 @@ class MessageStrategyBuilder:
         elif param.base_type == 'string':
             s = RandomString()
         else:
-            s = ConstantValue(Literal(param.base_type))
+            s = RandomSpecial(param.base_type)
         if param.is_array:
             s = RandomArray(s)
         statements.append(Assignment(name, s))
