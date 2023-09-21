@@ -137,6 +137,7 @@ class GeneratorType(Enum):
     STRING = auto()
     ARRAY = auto()
     SAMPLE = auto()
+    SPECIAL = auto()
 
 
 @frozen
@@ -378,6 +379,24 @@ class RandomSample(ValueGenerator):
 
     def __str__(self) -> str:
         return f'sampled_from({self.elements})'
+
+
+@frozen
+class RandomSpecial(ValueGenerator):
+    name: str
+
+    @property
+    def type(self) -> GeneratorType:
+        return GeneratorType.SPECIAL
+
+    def dependencies(self) -> Set[str]:
+        names = set()
+        # for expresion in self.arguments:
+        #     names.update(expresion.references())
+        return names
+
+    def __str__(self) -> str:
+        return f'gen_{self.name}()'
 
 
 ################################################################################
