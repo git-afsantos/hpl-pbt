@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Iterable, List, Mapping, Optional, Set, Tuple, Union
+from typing import Final, Iterable, List, Mapping, Optional, Set, Tuple, Union
 
 from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
@@ -25,6 +25,7 @@ from typeguard import check_type, typechecked
 from hplpbt.strategies.ast import (
     Assignment,
     Assumption,
+    DataStrategy,
     FunctionCall,
     RandomArray,
     RandomBool,
@@ -36,6 +37,30 @@ from hplpbt.strategies.ast import (
 )
 from hplpbt.strategies.logic import split_and
 from hplpbt.types import MessageType, ParameterDefinition
+
+################################################################################
+# Constants
+################################################################################
+
+
+STRATEGY_FACTORIES: Final[Mapping[str, DataStrategy]] = {
+    'bool': RandomBool,
+    'int': RandomInt,
+    'uint': RandomInt.uint,
+    'uint8': RandomInt.uint8,
+    'uint16': RandomInt.uint16,
+    'uint32': RandomInt.uint32,
+    'uint64': RandomInt.uint64,
+    'int8': RandomInt.int8,
+    'int16': RandomInt.int16,
+    'int32': RandomInt.int32,
+    'int64': RandomInt.int64,
+    'float': RandomFloat,
+    'float32': RandomFloat.float32,
+    'float64': RandomFloat.float64,
+    'string': RandomString,
+}
+
 
 ################################################################################
 # Message Strategy
@@ -273,16 +298,7 @@ class MessageStrategyBuilder:
 
     def _generate_param(self, name: str, param: ParameterDefinition) -> List[Statement]:
         statements = []
-        if param.base_type == 'bool':
-            s = RandomBool()
-        elif param.base_type == 'int':
-            s = RandomInt()
-        elif param.base_type == 'float':
-            s = RandomFloat()
-        elif param.base_type == 'string':
-            s = RandomString()
-        else:
-            s = RandomSpecial(param.base_type)
+        s: DataStrategy = STRATEGY_FACTORIES.get(param.base_type, RandomSpecial(param.base_type))
         if param.is_array:
             s = RandomArray(s)
         statements.append(Assignment.draw(name, s))
