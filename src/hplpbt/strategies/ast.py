@@ -493,6 +493,13 @@ class RandomSample(DataStrategy):
             names.update(expresion.references())
         return names
 
+    def add(self, element: Expression) -> 'RandomSample':
+        return self if element in self.elements else RandomSample(self.elements + (element,))
+
+    def remove(self, element: Expression) -> 'RandomSample':
+        elements = [el for el in self.elements if el != element]
+        return self if len(elements) == len(self.elements) else RandomSample(elements)
+
     def __str__(self) -> str:
         return f'sampled_from({self.elements})'
 
