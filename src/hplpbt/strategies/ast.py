@@ -162,7 +162,7 @@ class FunctionCall(Expression):
 
 @frozen
 class ValueDraw(Expression):
-    strategy: 'ValueGenerator'
+    strategy: 'DataStrategy'
 
     @property
     def type(self) -> ExpressionType:
@@ -180,7 +180,7 @@ class ValueDraw(Expression):
 ################################################################################
 
 
-class GeneratorType(Enum):
+class DataStrategyType(Enum):
     CONSTANT = auto()
     BOOL = auto()
     INT = auto()
@@ -192,55 +192,55 @@ class GeneratorType(Enum):
 
 
 @frozen
-class ValueGenerator:
+class DataStrategy:
     """
     Base class that represents calls to strategies within a function's body,
     for example, to generate arguments and other variables.
     """
 
     @property
-    def type(self) -> GeneratorType:
+    def type(self) -> DataStrategyType:
         raise NotImplementedError()
 
     @property
     def is_constant(self) -> bool:
-        return self.type == GeneratorType.CONSTANT
+        return self.type == DataStrategyType.CONSTANT
 
     @property
     def is_bool(self) -> bool:
-        return self.type == GeneratorType.BOOL
+        return self.type == DataStrategyType.BOOL
 
     @property
     def is_int(self) -> bool:
-        return self.type == GeneratorType.INT
+        return self.type == DataStrategyType.INT
 
     @property
     def is_float(self) -> bool:
-        return self.type == GeneratorType.FLOAT
+        return self.type == DataStrategyType.FLOAT
 
     @property
     def is_string(self) -> bool:
-        return self.type == GeneratorType.STRING
+        return self.type == DataStrategyType.STRING
 
     @property
     def is_array(self) -> bool:
-        return self.type == GeneratorType.ARRAY
+        return self.type == DataStrategyType.ARRAY
 
     @property
     def is_sample(self) -> bool:
-        return self.type == GeneratorType.SAMPLE
+        return self.type == DataStrategyType.SAMPLE
 
     def dependencies(self) -> Set[str]:
         return set()
 
 
 @frozen
-class ConstantValue(ValueGenerator):
+class ConstantValue(DataStrategy):
     expression: Expression = field(validator=instance_of(Expression))
 
     @property
-    def type(self) -> GeneratorType:
-        return GeneratorType.CONSTANT
+    def type(self) -> DataStrategyType:
+        return DataStrategyType.CONSTANT
 
     @property
     def value(self) -> Expression:
@@ -254,10 +254,10 @@ class ConstantValue(ValueGenerator):
 
 
 @frozen
-class RandomBool(ValueGenerator):
+class RandomBool(DataStrategy):
     @property
-    def type(self) -> GeneratorType:
-        return GeneratorType.BOOL
+    def type(self) -> DataStrategyType:
+        return DataStrategyType.BOOL
 
     def dependencies(self) -> Set[str]:
         return set()
@@ -267,7 +267,7 @@ class RandomBool(ValueGenerator):
 
 
 @frozen
-class RandomInt(ValueGenerator):
+class RandomInt(DataStrategy):
     # min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     # max_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     min_value: Optional[Expression] = field(
@@ -280,8 +280,8 @@ class RandomInt(ValueGenerator):
     )
 
     @property
-    def type(self) -> GeneratorType:
-        return GeneratorType.INT
+    def type(self) -> DataStrategyType:
+        return DataStrategyType.INT
 
     def dependencies(self) -> Set[str]:
         return self.min_value.references() | self.max_value.references()
@@ -297,7 +297,7 @@ class RandomInt(ValueGenerator):
 
 
 @frozen
-class RandomFloat(ValueGenerator):
+class RandomFloat(DataStrategy):
     # min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     # max_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     min_value: Optional[Expression] = field(
@@ -316,8 +316,8 @@ class RandomFloat(ValueGenerator):
     # exclude_max: bool = False
 
     @property
-    def type(self) -> GeneratorType:
-        return GeneratorType.FLOAT
+    def type(self) -> DataStrategyType:
+        return DataStrategyType.FLOAT
 
     def dependencies(self) -> Set[str]:
         return self.min_value.references() | self.max_value.references()
@@ -341,7 +341,7 @@ class RandomFloat(ValueGenerator):
 
 
 @frozen
-class RandomString(ValueGenerator):
+class RandomString(DataStrategy):
     # min_size: Expression = field(factory=Literal.zero, validator=instance_of(Expression))
     # max_size: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     min_size: Optional[Expression] = field(
@@ -355,8 +355,8 @@ class RandomString(ValueGenerator):
     # alphabet: Optional[Expression] = None
 
     @property
-    def type(self) -> GeneratorType:
-        return GeneratorType.STRING
+    def type(self) -> DataStrategyType:
+        return DataStrategyType.STRING
 
     def dependencies(self) -> Set[str]:
         return self.min_size.references() | self.max_size.references()
@@ -375,8 +375,8 @@ class RandomString(ValueGenerator):
 
 
 @frozen
-class RandomArray(ValueGenerator):
-    elements: ValueGenerator = field(validator=instance_of(ValueGenerator))
+class RandomArray(DataStrategy):
+    elements: DataStrategy = field(validator=instance_of(DataStrategy))
     # min_size: Expression = field(factory=Literal.zero, validator=instance_of(Expression))
     # max_size: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     # unique: bool = False
@@ -390,8 +390,8 @@ class RandomArray(ValueGenerator):
     )
 
     @property
-    def type(self) -> GeneratorType:
-        return GeneratorType.ARRAY
+    def type(self) -> DataStrategyType:
+        return DataStrategyType.ARRAY
 
     def dependencies(self) -> Set[str]:
         return self.min_size.references() | self.max_size.references()
@@ -411,7 +411,7 @@ class RandomArray(ValueGenerator):
 
 
 @frozen
-class RandomSample(ValueGenerator):
+class RandomSample(DataStrategy):
     elements: Iterable[Expression] = field(
         factory=tuple,
         converter=tuple,
@@ -419,8 +419,8 @@ class RandomSample(ValueGenerator):
     )
 
     @property
-    def type(self) -> GeneratorType:
-        return GeneratorType.SAMPLE
+    def type(self) -> DataStrategyType:
+        return DataStrategyType.SAMPLE
 
     def dependencies(self) -> Set[str]:
         names = set()
@@ -433,12 +433,12 @@ class RandomSample(ValueGenerator):
 
 
 @frozen
-class RandomSpecial(ValueGenerator):
+class RandomSpecial(DataStrategy):
     name: str
 
     @property
-    def type(self) -> GeneratorType:
-        return GeneratorType.SPECIAL
+    def type(self) -> DataStrategyType:
+        return DataStrategyType.SPECIAL
 
     def dependencies(self) -> Set[str]:
         names = set()
@@ -505,8 +505,8 @@ class Assignment(Statement):
         return StatementType.ASSIGN
 
     @classmethod
-    def draw(cls, variable: str, strategy: ValueGenerator) -> 'Assignment':
-        strategy = check_type(strategy, ValueGenerator)
+    def draw(cls, variable: str, strategy: DataStrategy) -> 'Assignment':
+        strategy = check_type(strategy, DataStrategy)
         expression = ValueDraw(strategy)
         return cls(variable, expression)
 
