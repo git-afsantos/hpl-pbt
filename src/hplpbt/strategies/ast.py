@@ -283,6 +283,59 @@ class RandomInt(DataStrategy):
     def type(self) -> DataStrategyType:
         return DataStrategyType.INT
 
+    @classmethod
+    def uint(cls) -> 'RandomInt':
+        min_value = Literal(0)
+        return cls(min_value=min_value)
+
+    @classmethod
+    def uint8(cls) -> 'RandomInt':
+        min_value = Literal(0)
+        max_value = Literal(255)
+        return cls(min_value=min_value, max_value=max_value)
+
+    @classmethod
+    def uint16(cls) -> 'RandomInt':
+        min_value = Literal(0)
+        max_value = Literal(65535)
+        return cls(min_value=min_value, max_value=max_value)
+
+    @classmethod
+    def uint32(cls) -> 'RandomInt':
+        min_value = Literal(0)
+        max_value = Literal(4294967295)
+        return cls(min_value=min_value, max_value=max_value)
+
+    @classmethod
+    def uint64(cls) -> 'RandomInt':
+        min_value = Literal(0)
+        max_value = Literal(18446744073709551615)
+        return cls(min_value=min_value, max_value=max_value)
+
+    @classmethod
+    def int8(cls) -> 'RandomInt':
+        min_value = Literal(-128)
+        max_value = Literal(127)
+        return cls(min_value=min_value, max_value=max_value)
+
+    @classmethod
+    def int16(cls) -> 'RandomInt':
+        min_value = Literal(-32768)
+        max_value = Literal(32767)
+        return cls(min_value=min_value, max_value=max_value)
+
+    @classmethod
+    def int32(cls) -> 'RandomInt':
+        min_value = Literal(-2147483648)
+        max_value = Literal(2147483647)
+        return cls(min_value=min_value, max_value=max_value)
+
+    @classmethod
+    def int64(cls) -> 'RandomInt':
+        min_value = Literal(-9223372036854775808)
+        max_value = Literal(9223372036854775807)
+        return cls(min_value=min_value, max_value=max_value)
+
     def dependencies(self) -> Set[str]:
         return self.min_value.references() | self.max_value.references()
 
@@ -318,6 +371,18 @@ class RandomFloat(DataStrategy):
     @property
     def type(self) -> DataStrategyType:
         return DataStrategyType.FLOAT
+
+    @classmethod
+    def float32(cls) -> 'RandomFloat':
+        min_value = Literal(-3.3999999521443642e38)
+        max_value = Literal(3.3999999521443642e38)
+        return cls(min_value=min_value, max_value=max_value)
+
+    @classmethod
+    def float64(cls) -> 'RandomFloat':
+        min_value = Literal(-1.7e308)
+        max_value = Literal(1.7e308)
+        return cls(min_value=min_value, max_value=max_value)
 
     def dependencies(self) -> Set[str]:
         return self.min_value.references() | self.max_value.references()
