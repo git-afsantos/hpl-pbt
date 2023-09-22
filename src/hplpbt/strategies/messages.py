@@ -9,9 +9,22 @@ from typing import Iterable, List, Mapping, Optional, Set, Tuple, Union
 
 from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
-from hpl.ast import HplEvent, HplProperty, HplSimpleEvent, HplSpecification
+from hpl.ast import (
+    HplEvent,
+    HplExpression,
+    HplPredicate,
+    HplProperty,
+    HplSimpleEvent,
+    HplSpecification,
+    HplVarReference,
+)
+from hpl.rewrite import refactor_reference
+# from hpl.types import TypeToken
+from typeguard import check_type, typechecked
+
 from hplpbt.strategies.ast import (
     Assignment,
+    Assumption,
     FunctionCall,
     RandomArray,
     RandomBool,
@@ -21,9 +34,7 @@ from hplpbt.strategies.ast import (
     RandomString,
     Statement,
 )
-# from hpl.types import TypeToken
-from typeguard import check_type, typechecked
-
+from hplpbt.strategies.logic import split_and
 from hplpbt.types import MessageType, ParameterDefinition
 
 ################################################################################
@@ -219,29 +230,46 @@ class MessageStrategyBuilder:
         if strategy is not None:
             return strategy
 
+        body = self._generate_body_from_type_params(type_def)
+        assert len(body) > 0
+        assert isinstance(body[-1], Assignment)
+        ret_var = body[-1].variable
+
+        ret_type = type_def.qualified_name
+        strategy = MessageStrategy(f'gen_{type_def.name}', ret_type, ret_var, body=body)
+        self._cache[type_def.name] = strategy
+        return strategy
+
+    def _generate_body_from_type_params(self, type_def: MessageType) -> List[Statement]:
         body = []
+        refmap = {}
         args = []
         for i, param in enumerate(type_def.positional_parameters):
             variable = f'arg{i}'
             body.extend(self._generate_param(variable, param))
             args.append(variable)
+            refmap[f'_{i}'] = variable
         kwargs = []
         i += 1
         for name, param in type_def.keyword_parameters.items():
             variable = f'arg{i}'
             body.extend(self._generate_param(variable, param))
             kwargs.append((name, variable))
+            refmap[name] = variable
             i += 1
+
+        # FIXME not the right place
+        conditions = self._preprocess_precondition(type_def.precondition)
+        for phi in conditions:
+            for alias in phi.external_references():
+                var = refmap[alias]
+                phi = phi.replace_var_reference(alias, HplVarReference(f'@{var}'))
+            body.append(Assumption(phi))
 
         name = type_def.qualified_name
         constructor = FunctionCall(name, arguments=args, keyword_arguments=kwargs)
-        ret_var = 'msg'
-        body.append(Assignment(ret_var, constructor))
-
-        ret_type = type_def.qualified_name
-        strategy = MessageStrategy(f'gen_{type_def.name}', ret_type, ret_var, body=body)
-        self._cache[type_def.name] = strategy
-        return strategy
+        body.append(Assignment('msg', constructor))
+        return body
 
     def _generate_param(self, name: str, param: ParameterDefinition) -> List[Statement]:
         statements = []
@@ -259,3 +287,10 @@ class MessageStrategyBuilder:
             s = RandomArray(s)
         statements.append(Assignment.draw(name, s))
         return statements
+
+    def _preprocess_precondition(self, pre: HplPredicate) -> List[HplExpression]:
+        if pre.is_vacuous:
+            assert pre.is_true
+            return []
+        # break the first level of conjunctions
+        return split_and(pre.condition)

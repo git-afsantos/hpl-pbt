@@ -528,4 +528,4 @@ class Assumption(Statement):
         return StatementType.ASSUME
 
     def __str__(self) -> str:
-        return f'assume({self.expression})'
+        return f"assume('{self.expression}')"
