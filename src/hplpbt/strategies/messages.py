@@ -298,7 +298,8 @@ class MessageStrategyBuilder:
 
     def _generate_param(self, name: str, param: ParameterDefinition) -> List[Statement]:
         statements = []
-        s: DataStrategy = STRATEGY_FACTORIES.get(param.base_type, RandomSpecial(param.base_type))
+        factory = STRATEGY_FACTORIES.get(param.base_type)
+        s: DataStrategy = RandomSpecial(param.base_type) if factory is None else factory()
         if param.is_array:
             s = RandomArray(s)
         statements.append(Assignment.draw(name, s))
