@@ -233,6 +233,10 @@ class DataStrategy:
     def dependencies(self) -> Set[str]:
         return set()
 
+    def is_value_impossible(self, expr: Expression) -> bool:
+        """Return True only if absolutely sure."""
+        raise NotImplementedError(f'is_value_impossible({expr!r})')
+
 
 @frozen
 class ConstantValue(DataStrategy):
@@ -249,6 +253,18 @@ class ConstantValue(DataStrategy):
     def dependencies(self) -> Set[str]:
         return self.expression.references()
 
+    def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_literal:
+            if self.expression.is_literal:
+                return self.expression.value != expr.value
+        elif expr.is_reference:
+            pass
+        elif expr.is_function_call:
+            pass
+        elif expr.is_value_draw:
+            pass
+        return False
+
     def __str__(self) -> str:
         return f'just({self.expression})'
 
@@ -261,6 +277,11 @@ class RandomBool(DataStrategy):
 
     def dependencies(self) -> Set[str]:
         return set()
+
+    def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_literal:
+            return not expr.is_bool
+        return False
 
     def __str__(self) -> str:
         return 'booleans()'
@@ -339,6 +360,26 @@ class RandomInt(DataStrategy):
     def dependencies(self) -> Set[str]:
         return self.min_value.references() | self.max_value.references()
 
+    def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_literal:
+            if expr.is_float:
+                k: int = int(expr.value)
+                if k != expr.value:
+                    return True
+            elif expr.is_int:
+                k = expr.value
+            else:
+                return True
+            if self.min_value is not None and self.min_value.is_literal:
+                return k < self.min_value.value
+            if self.max_value is not None and self.max_value.is_literal:
+                return k > self.max_value.value
+        elif expr.is_function_call:
+            if expr.function == 'len' or expr.function == 'abs':
+                if self.max_value is not None and self.max_value.is_literal:
+                    return self.max_value.value < 0
+        return False
+
     def __str__(self) -> str:
         args = []
         if self.min_value is not None:
@@ -387,6 +428,21 @@ class RandomFloat(DataStrategy):
     def dependencies(self) -> Set[str]:
         return self.min_value.references() | self.max_value.references()
 
+    def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_literal:
+            if not expr.is_float and not expr.is_int:
+                return True
+            k = expr.value
+            if self.min_value is not None and self.min_value.is_literal:
+                return k < self.min_value.value
+            if self.max_value is not None and self.max_value.is_literal:
+                return k > self.max_value.value
+        elif expr.is_function_call:
+            if expr.function == 'len' or expr.function == 'abs':
+                if self.max_value is not None and self.max_value.is_literal:
+                    return self.max_value.value < 0
+        return False
+
     def __str__(self) -> str:
         # min_value=None
         # max_value=None
@@ -426,6 +482,28 @@ class RandomString(DataStrategy):
     def dependencies(self) -> Set[str]:
         return self.min_size.references() | self.max_size.references()
 
+    def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_literal:
+            return not expr.is_string
+        elif expr.is_function_call:
+            return expr.function in (
+                'len',
+                'abs',
+                'bool',
+                'int',
+                'float',
+                'min',
+                'max',
+                'sin',
+                'cos',
+                'tan',
+                'asin',
+                'acos',
+                'atan',
+                'atan2',
+            )
+        return False
+
     def __str__(self) -> str:
         # alphabet=characters(codec='utf-8')
         # min_size=0
@@ -460,6 +538,11 @@ class RandomArray(DataStrategy):
 
     def dependencies(self) -> Set[str]:
         return self.min_size.references() | self.max_size.references()
+
+    def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_literal:
+            return not expr.is_array
+        return False
 
     def __str__(self) -> str:
         # min_size=0
@@ -500,6 +583,13 @@ class RandomSample(DataStrategy):
         elements = [el for el in self.elements if el != element]
         return self if len(elements) == len(self.elements) else RandomSample(elements)
 
+    def is_value_impossible(self, expr: Expression) -> bool:
+        if not all(e.is_literal for e in self.elements):
+            return False
+        if expr.is_literal:
+            return expr.value not in self.elements
+        return False
+
     def __str__(self) -> str:
         return f'sampled_from({self.elements})'
 
@@ -517,6 +607,9 @@ class RandomSpecial(DataStrategy):
         # for expresion in self.arguments:
         #     names.update(expresion.references())
         return names
+
+    def is_value_impossible(self, _expr: Expression) -> bool:
+        return False
 
     def __str__(self) -> str:
         return f'gen_{self.name}()'

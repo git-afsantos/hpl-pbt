@@ -10,14 +10,17 @@ from typing import Any, List, Optional
 from enum import Enum, auto
 
 from attrs import define, field
-from hpl.ast import HplExpression
 from hpl.types import TypeToken
 
-from hplpbt.strategies.ast import ConstantValue, DataStrategy, Expression, RandomSample
+from hplpbt.strategies.ast import Assumption, ConstantValue, DataStrategy, Expression, RandomSample
 
 ################################################################################
 # Internal Structures: Basic (Data) Field Generator
 ################################################################################
+
+
+class ContradictionError(Exception):
+    pass
 
 
 class DataGeneratorState(Enum):
@@ -40,11 +43,11 @@ class DataGenerator:
     statement are satisfied and the statements are processed.
     """
 
-    expression: HplExpression
+    expression: Expression
     type_token: TypeToken
     parent: Optional['DataGenerator']
     strategy: DataStrategy
-    assumptions: List[HplExpression] = field(factory=list)
+    assumptions: List[Assumption] = field(factory=list)
     is_ranged: bool = False
     reference_count: int = field(default=0, init=False, eq=False)
     _ready_ref: Any = None
@@ -52,7 +55,11 @@ class DataGenerator:
     _loop_context: Optional[Any] = None
 
     def eq(self, value: Expression):
-        if not self.strategy.is_constant:
+        if self.strategy.is_value_impossible(value):
+            raise ContradictionError('{self.expression} == {value}')
+        if self.strategy.is_constant:
+            self.strategy = ConstantValue(value)
+        else:
             self.strategy = ConstantValue(value)
 
     def neq(self, value: Expression):
