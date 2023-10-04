@@ -222,7 +222,22 @@ class ValueDraw(Expression):
 @typechecked
 def expression_from_hpl(expr: HplExpression) -> Expression:
     if expr.is_value:
-        pass
+        if expr.is_literal:
+            return Literal(expr.value)
+        if expr.is_set:
+            return Literal(tuple(map(expression_from_hpl, expr.values)))
+        if expr.is_range:
+            lb = convert_to_int(expression_from_hpl(expr.min_value))
+            if expr.exclude_min:
+                lb = BinaryOperator('+', lb, Literal(1))
+            ub = convert_to_int(expression_from_hpl(expr.max_value))
+            if not expr.exclude_max:
+                ub = BinaryOperator('+', ub, Literal(1))
+            return FunctionCall('range', (lb, ub))
+        if expr.is_variable:
+            return Reference(expr.token)
+        if expr.is_this_msg:
+            return Reference('msg')
     if expr.is_operator:
         pass
     if expr.is_function_call:
@@ -232,6 +247,16 @@ def expression_from_hpl(expr: HplExpression) -> Expression:
     if expr.is_accessor:
         pass
     raise ValueError(f'unable to handle HplExpression: {expr!r}')
+
+
+@typechecked
+def convert_to_int(expr: Expression) -> Expression:
+    if expr.is_literal and expr.is_int:
+        return expr
+    if expr.is_function_call:
+        if expr.function == 'len':
+            return expr
+    return FunctionCall('int', (expr,))
 
 
 ################################################################################
