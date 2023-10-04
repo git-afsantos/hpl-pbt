@@ -18,7 +18,7 @@ from hpl.ast import (
     HplSpecification,
     HplVarReference,
 )
-from hpl.rewrite import refactor_reference
+from hpl.rewrite import simplify, split_and
 # from hpl.types import TypeToken
 from typeguard import check_type, typechecked
 
@@ -35,7 +35,6 @@ from hplpbt.strategies.ast import (
     RandomString,
     Statement,
 )
-from hplpbt.strategies.logic import split_and
 from hplpbt.types import MessageType, ParameterDefinition
 
 ################################################################################
@@ -310,4 +309,4 @@ class MessageStrategyBuilder:
             assert pre.is_true
             return []
         # break the first level of conjunctions
-        return split_and(pre.condition)
+        return split_and(simplify(pre.condition))
