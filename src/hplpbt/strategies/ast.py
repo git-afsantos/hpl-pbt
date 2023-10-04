@@ -12,7 +12,7 @@ from enum import auto, Enum
 from attrs import field, frozen
 from attrs.validators import deep_iterable, instance_of, optional
 from hpl.ast import HplExpression
-from typeguard import check_type
+from typeguard import check_type, typechecked
 
 ################################################################################
 # Strategy AST - Value Expressions
@@ -22,6 +22,8 @@ from typeguard import check_type
 class ExpressionType(Enum):
     LITERAL = auto()
     REFERENCE = auto()
+    UNARY_OPERATOR = auto()
+    BINARY_OPERATOR = auto()
     CALL = auto()
     DRAW = auto()
 
@@ -44,6 +46,14 @@ class Expression:
     @property
     def is_reference(self) -> bool:
         return self.type == ExpressionType.REFERENCE
+
+    @property
+    def is_unary_operator(self) -> bool:
+        return self.type == ExpressionType.UNARY_OPERATOR
+
+    @property
+    def is_binary_operator(self) -> bool:
+        return self.type == ExpressionType.BINARY_OPERATOR
 
     @property
     def is_function_call(self) -> bool:
@@ -136,6 +146,40 @@ class Reference(Expression):
 
 
 @frozen
+class UnaryOperator(Expression):
+    token: str
+    operand: Expression
+
+    @property
+    def type(self) -> ExpressionType:
+        return ExpressionType.UNARY_OPERATOR
+
+    def references(self) -> Set[str]:
+        return self.operand.references()
+
+    def __str__(self) -> str:
+        ws: str = ' ' if self.token.isalpha() else ''
+        return f'({self.token}{ws}{self.operand})'
+
+
+@frozen
+class BinaryOperator(Expression):
+    token: str
+    operand1: Expression
+    operand2: Expression
+
+    @property
+    def type(self) -> ExpressionType:
+        return ExpressionType.BINARY_OPERATOR
+
+    def references(self) -> Set[str]:
+        return self.operand1.references() | self.operand2.references()
+
+    def __str__(self) -> str:
+        return f'({self.operand1} {self.token} {self.operand2})'
+
+
+@frozen
 class FunctionCall(Expression):
     function: str
     arguments: Iterable[Expression] = field(factory=tuple, converter=tuple)
@@ -173,6 +217,21 @@ class ValueDraw(Expression):
 
     def __str__(self) -> str:
         return f'draw({self.strategy})'
+
+
+@typechecked
+def expression_from_hpl(expr: HplExpression) -> Expression:
+    if expr.is_value:
+        pass
+    if expr.is_operator:
+        pass
+    if expr.is_function_call:
+        pass
+    if expr.is_quantifier:
+        pass
+    if expr.is_accessor:
+        pass
+    raise ValueError(f'unable to handle HplExpression: {expr!r}')
 
 
 ################################################################################
