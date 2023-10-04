@@ -74,7 +74,7 @@ setup(
     install_requires=[
         'attrs~=23.1',
         'hpl-rv~=1.1',
-        'hpl-specs~=1.2',
+        'hpl-specs~=1.3',
         'Jinja2~=3.1',
         'ruamel.yaml~=0.17',
         'typeguard~=4.1',
