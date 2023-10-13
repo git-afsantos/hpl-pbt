@@ -7,7 +7,7 @@
 
 from typing import Final, Iterable, List, Mapping, Optional, Set, Tuple, Union
 
-from attrs import field, frozen
+from attrs import define, field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import (
     HplEvent,
@@ -262,16 +262,21 @@ class MessageStrategyBuilder:
         strategy = self._cache.get(type_def.name)
         if strategy is not None:
             return strategy
+        builder = SingleMessageStrategyBuilder()
+        strategy = builder.build(type_def)
+        self._cache[type_def.name] = strategy
+        return strategy
 
+
+@define
+class SingleMessageStrategyBuilder:
+    def build(self, type_def: MessageType) -> MessageStrategy:
         body = self._generate_body_from_type_params(type_def)
         assert len(body) > 0
         assert isinstance(body[-1], Assignment)
         ret_var = body[-1].variable
-
         ret_type = type_def.qualified_name
-        strategy = MessageStrategy(f'gen_{type_def.name}', ret_type, ret_var, body=body)
-        self._cache[type_def.name] = strategy
-        return strategy
+        return MessageStrategy(f'gen_{type_def.name}', ret_type, ret_var, body=body)
 
     def _generate_body_from_type_params(self, type_def: MessageType) -> List[Statement]:
         body = []
