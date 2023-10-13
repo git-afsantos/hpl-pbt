@@ -291,18 +291,42 @@ class SingleMessageStrategyBuilder:
         #    to the generated local variable names.
         self._preprocess_preconditions(refmap)
 
+        # 3. Create a data generator for each argument variable.
+
+        # 4. Iterate over argument assumptions and try to modify the strategies
+        #    associated with each data generator; supply them with appropriate
+        #    arguments, etc., to produce optimized code that does not rely
+        #    solely on assumptions to discard invalid data.
+
+        # 5. Produce a list of statements for each data generator and sort them
+        #    according to their references and dependencies.
+        #    Detect and report cyclic dependencies.
+        #    Break down into suboptimal code if necessary to avoid cycles.
         body = self._generate_body_from_type_params()
         assert len(body) > 0
+
+        # 6. Construct the message object using the previously generated arguments.
         assert isinstance(body[-1], Assignment)
         ret_var = body[-1].variable
+
+        # 7. Create data constructors for each message field referenced in the
+        #    post-conditions (assumptions about the generated message).
+
+        # 8. Iterate over the post-conditions and try to build values
+        #    that are correct by construction.
+
+        # 9. Produce a list of statements for each data generator and sort them
+        #    according to their references and dependencies.
+
+        # 10. Return the fully constructed message strategy.
         ret_type = self.message_type.qualified_name
         return MessageStrategy(f'gen_{self.message_type.name}', ret_type, ret_var, body=body)
 
     def _generate_argument_names(self) -> Dict[str, str]:
         # returns a reference map, mapping user-input names to generated names
         # resets/rebuilds positional and keyword argument lists
-        # self.positional_arguments = []
-        # self.keyword_arguments = []
+        self.positional_arguments.clear()
+        self.keyword_arguments.clear()
         refmap = {}
         for i, param in enumerate(self.message_type.positional_parameters):
             variable = f'arg{i}'
@@ -319,7 +343,7 @@ class SingleMessageStrategyBuilder:
 
     def _preprocess_preconditions(self, refmap: Mapping[str, str]):
         pre = self.message_type.precondition
-        # self.preconditions = []
+        self.preconditions.clear()
         if pre.is_vacuous:
             assert pre.is_true
             return
