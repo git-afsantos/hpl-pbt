@@ -442,7 +442,12 @@ class RandomInt(DataStrategy):
         return cls(min_value=min_value, max_value=max_value)
 
     def dependencies(self) -> Set[str]:
-        return self.min_value.references() | self.max_value.references()
+        dependencies = set()
+        if self.min_value is not None:
+            dependencies.update(self.min_value.references())
+        if self.max_value is not None:
+            dependencies.update(self.max_value.references())
+        return dependencies
 
     def is_value_impossible(self, expr: Expression) -> bool:
         if expr.is_literal:
@@ -510,7 +515,12 @@ class RandomFloat(DataStrategy):
         return cls(min_value=min_value, max_value=max_value)
 
     def dependencies(self) -> Set[str]:
-        return self.min_value.references() | self.max_value.references()
+        dependencies = set()
+        if self.min_value is not None:
+            dependencies.update(self.min_value.references())
+        if self.max_value is not None:
+            dependencies.update(self.max_value.references())
+        return dependencies
 
     def is_value_impossible(self, expr: Expression) -> bool:
         if expr.is_literal:
@@ -564,7 +574,12 @@ class RandomString(DataStrategy):
         return DataStrategyType.STRING
 
     def dependencies(self) -> Set[str]:
-        return self.min_size.references() | self.max_size.references()
+        dependencies = set()
+        if self.min_size is not None:
+            dependencies.update(self.min_size.references())
+        if self.max_size is not None:
+            dependencies.update(self.max_size.references())
+        return dependencies
 
     def is_value_impossible(self, expr: Expression) -> bool:
         if expr.is_literal:
@@ -621,7 +636,12 @@ class RandomArray(DataStrategy):
         return DataStrategyType.ARRAY
 
     def dependencies(self) -> Set[str]:
-        return self.min_size.references() | self.max_size.references()
+        dependencies = set()
+        if self.min_size is not None:
+            dependencies.update(self.min_size.references())
+        if self.max_size is not None:
+            dependencies.update(self.max_size.references())
+        return dependencies
 
     def is_value_impossible(self, expr: Expression) -> bool:
         if expr.is_literal:
@@ -787,6 +807,9 @@ class Assumption(Statement):
     @property
     def type(self) -> StatementType:
         return StatementType.ASSUME
+
+    def dependencies(self) -> Set[str]:
+        return self.expression.external_references()
 
     def __str__(self) -> str:
         return f"assume('{self.expression}')"
