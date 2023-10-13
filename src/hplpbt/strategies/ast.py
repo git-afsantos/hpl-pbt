@@ -198,7 +198,7 @@ class FunctionCall(Expression):
         return names
 
     def __str__(self) -> str:
-        args = list(self.arguments)
+        args = list(map(str, self.arguments))
         args.extend(f'{key}={arg}' for key, arg in self.keyword_arguments)
         args = ', '.join(args)
         return f'{self.function}({args})'
