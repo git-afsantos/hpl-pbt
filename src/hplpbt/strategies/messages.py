@@ -22,6 +22,7 @@ from hpl.rewrite import simplify, split_and
 # from hpl.types import TypeToken
 from typeguard import check_type, typechecked
 
+from hplpbt.strategies._codegen import sort_statements
 from hplpbt.strategies.ast import (
     Assignment,
     Assumption,
@@ -369,6 +370,8 @@ class SingleMessageStrategyBuilder:
             kwargs.append((name, Reference(name)))
         for phi in self.preconditions:
             body.append(Assumption(phi))
+
+        body = sort_statements(body)
 
         name = self.message_type.qualified_name
         constructor = FunctionCall(name, arguments=args, keyword_arguments=kwargs)
