@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Final, Iterable, List, Mapping, Optional, Set, Tuple, Union
+from typing import Dict, Final, Iterable, List, Mapping, Optional, Set, Tuple, Union
 
 from attrs import define, field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
@@ -33,6 +33,7 @@ from hplpbt.strategies.ast import (
     RandomInt,
     RandomSpecial,
     RandomString,
+    Reference,
     Statement,
 )
 from hplpbt.types import MessageType, ParameterDefinition
@@ -262,49 +263,90 @@ class MessageStrategyBuilder:
         strategy = self._cache.get(type_def.name)
         if strategy is not None:
             return strategy
-        builder = SingleMessageStrategyBuilder()
-        strategy = builder.build(type_def)
+        builder = SingleMessageStrategyBuilder(type_def)
+        strategy = builder.build()
         self._cache[type_def.name] = strategy
         return strategy
 
 
-@define
+@frozen
 class SingleMessageStrategyBuilder:
-    def build(self, type_def: MessageType) -> MessageStrategy:
-        body = self._generate_body_from_type_params(type_def)
+    # the message type to build instances of
+    message_type: MessageType
+    # arguments to provide to the message type constructor
+    positional_arguments: List[Tuple[str, ParameterDefinition]] = field(factory=list)
+    keyword_arguments: List[Tuple[str, ParameterDefinition]] = field(factory=list)
+    # assumptions about the arguments to the message type constructor
+    preconditions: List[HplExpression] = field(factory=list)
+
+    def build(self) -> MessageStrategy:
+        # 1. Iterate over message type parameters and create local variables
+        #    to hold generated data to pass into the constructor.
+        #    Store the name mapping from user input variables to local variables.
+        refmap = self._generate_argument_names()
+
+        # 2. Simplify the message type's precondition predicate and break it
+        #    down into a list of simpler conditions.
+        #    Replace references to user-input variable names with references
+        #    to the generated local variable names.
+        self._preprocess_preconditions(refmap)
+
+        body = self._generate_body_from_type_params()
         assert len(body) > 0
         assert isinstance(body[-1], Assignment)
         ret_var = body[-1].variable
-        ret_type = type_def.qualified_name
-        return MessageStrategy(f'gen_{type_def.name}', ret_type, ret_var, body=body)
+        ret_type = self.message_type.qualified_name
+        return MessageStrategy(f'gen_{self.message_type.name}', ret_type, ret_var, body=body)
 
-    def _generate_body_from_type_params(self, type_def: MessageType) -> List[Statement]:
-        body = []
+    def _generate_argument_names(self) -> Dict[str, str]:
+        # returns a reference map, mapping user-input names to generated names
+        # resets/rebuilds positional and keyword argument lists
+        # self.positional_arguments = []
+        # self.keyword_arguments = []
         refmap = {}
-        args = []
-        for i, param in enumerate(type_def.positional_parameters):
+        for i, param in enumerate(self.message_type.positional_parameters):
             variable = f'arg{i}'
-            body.extend(self._generate_param(variable, param))
-            args.append(variable)
+            self.positional_arguments.append((variable, param))
             refmap[f'_{i}'] = variable
-        kwargs = []
         i = len(refmap)
-        for name, param in type_def.keyword_parameters.items():
+        for name, param in self.message_type.keyword_parameters.items():
             variable = f'arg{i}'
-            body.extend(self._generate_param(variable, param))
-            kwargs.append((name, variable))
+            self.keyword_arguments.append((variable, param))
+            assert name not in refmap
             refmap[name] = variable
             i += 1
+        return refmap
 
-        # FIXME not the right place
-        conditions = self._preprocess_precondition(type_def.precondition)
+    def _preprocess_preconditions(self, refmap: Mapping[str, str]):
+        pre = self.message_type.precondition
+        # self.preconditions = []
+        if pre.is_vacuous:
+            assert pre.is_true
+            return
+        # break the first level of conjunctions
+        conditions = split_and(simplify(pre.condition))
+        # replace references to user-input variables
         for phi in conditions:
             for alias in phi.external_references():
                 var = refmap[alias]
                 phi = phi.replace_var_reference(alias, HplVarReference(f'@{var}'))
+            # store only the final form of the expression
+            self.preconditions.append(phi)
+
+    def _generate_body_from_type_params(self) -> List[Statement]:
+        body = []
+        args = []
+        for name, param in self.positional_arguments:
+            body.extend(self._generate_param(name, param))
+            args.append(Reference(name))
+        kwargs = []
+        for name, param in self.keyword_arguments:
+            body.extend(self._generate_param(name, param))
+            kwargs.append((name, Reference(name)))
+        for phi in self.preconditions:
             body.append(Assumption(phi))
 
-        name = type_def.qualified_name
+        name = self.message_type.qualified_name
         constructor = FunctionCall(name, arguments=args, keyword_arguments=kwargs)
         body.append(Assignment('msg', constructor))
         return body
@@ -317,10 +359,3 @@ class SingleMessageStrategyBuilder:
             s = RandomArray(s)
         statements.append(Assignment.draw(name, s))
         return statements
-
-    def _preprocess_precondition(self, pre: HplPredicate) -> List[HplExpression]:
-        if pre.is_vacuous:
-            assert pre.is_true
-            return []
-        # break the first level of conjunctions
-        return split_and(simplify(pre.condition))
