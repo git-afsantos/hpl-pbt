@@ -238,13 +238,13 @@ def expression_from_hpl(expr: HplExpression) -> Expression:
             return Reference(expr.token)
         if expr.is_this_msg:
             return Reference('msg')
-    if expr.is_operator:
+    elif expr.is_operator:
         pass
-    if expr.is_function_call:
+    elif expr.is_function_call:
         pass
-    if expr.is_quantifier:
+    elif expr.is_quantifier:
         pass
-    if expr.is_accessor:
+    elif expr.is_accessor:
         pass
     raise ValueError(f'unable to handle HplExpression: {expr!r}')
 

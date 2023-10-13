@@ -241,11 +241,20 @@ class MessageStrategyBuilder:
         type_def: MessageType = self.type_defs[type_name]
         return self._strategies_for_type(type_def)
 
-    def _strategies_for_type(self, type_def: MessageType) -> Set[MessageStrategy]:
+    def _strategies_for_type(
+        self,
+        type_def: MessageType,
+        visited: Optional[Set[str]] = None,
+    ) -> Set[MessageStrategy]:
+        visited = set() if visited is None else visited
         strategies = set()
+        # mark self as visited to avoid cyclic dependencies
+        visited.add(type_def.name)
         for type_name in type_def.dependencies():
             other: MessageType = self.type_defs[type_name]
-            strategies.update(self._strategies_for_type(other))
+            # avoid cyclic dependencies
+            if other.name not in visited:
+                strategies.update(self._strategies_for_type(other, visited=visited))
         strategies.add(self._strategy_for_type(type_def))
         return strategies
 
@@ -274,7 +283,7 @@ class MessageStrategyBuilder:
             args.append(variable)
             refmap[f'_{i}'] = variable
         kwargs = []
-        i += 1
+        i = len(refmap)
         for name, param in type_def.keyword_parameters.items():
             variable = f'arg{i}'
             body.extend(self._generate_param(variable, param))
