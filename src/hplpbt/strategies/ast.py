@@ -733,6 +733,9 @@ class Statement:
     def is_block(self) -> bool:
         return self.type == StatementType.BLOCK
 
+    def dependencies(self) -> Set[str]:
+        return set()
+
     def merge(self, other: 'Statement') -> 'Statement':
         c1 = type(self).__name__
         c2 = type(other).__name__
@@ -758,6 +761,9 @@ class Assignment(Statement):
         strategy = check_type(strategy, DataStrategy)
         expression = ValueDraw(strategy)
         return cls(variable, expression)
+
+    def dependencies(self) -> Set[str]:
+        return self.expression.references()
 
     def __str__(self) -> str:
         return f'{self.variable} = {self.expression}'
