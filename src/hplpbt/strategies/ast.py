@@ -736,6 +736,9 @@ class Statement:
     def dependencies(self) -> Set[str]:
         return set()
 
+    def assignments(self) -> Set[str]:
+        return set()
+
     def merge(self, other: 'Statement') -> 'Statement':
         c1 = type(self).__name__
         c2 = type(other).__name__
@@ -764,6 +767,9 @@ class Assignment(Statement):
 
     def dependencies(self) -> Set[str]:
         return self.expression.references()
+
+    def assignments(self) -> Set[str]:
+        return {self.variable}
 
     def __str__(self) -> str:
         return f'{self.variable} = {self.expression}'
