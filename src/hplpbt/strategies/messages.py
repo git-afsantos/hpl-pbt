@@ -279,6 +279,8 @@ class SingleMessageStrategyBuilder:
     keyword_arguments: List[Tuple[str, ParameterDefinition]] = field(factory=list)
     # assumptions about the arguments to the message type constructor
     preconditions: List[HplExpression] = field(factory=list)
+    # name of the variable containing the constructed message
+    message_variable: str = 'msg'
 
     def build(self) -> MessageStrategy:
         # 1. Iterate over message type parameters and create local variables
@@ -303,12 +305,13 @@ class SingleMessageStrategyBuilder:
         #    according to their references and dependencies.
         #    Detect and report cyclic dependencies.
         #    Break down into suboptimal code if necessary to avoid cycles.
-        body = self._generate_body_from_type_params()
-        assert len(body) > 0
+        body = self._generate_message_from_type_params()
 
         # 6. Construct the message object using the previously generated arguments.
+        #    (Bundled into the previous step to avoid state variables)
+        assert len(body) > 0
         assert isinstance(body[-1], Assignment)
-        ret_var = body[-1].variable
+        assert body[-1].variable == self.message_variable
 
         # 7. Create data constructors for each message field referenced in the
         #    post-conditions (assumptions about the generated message).
@@ -320,8 +323,9 @@ class SingleMessageStrategyBuilder:
         #    according to their references and dependencies.
 
         # 10. Return the fully constructed message strategy.
-        ret_type = self.message_type.qualified_name
-        return MessageStrategy(f'gen_{self.message_type.name}', ret_type, ret_var, body=body)
+        ret_type: str = self.message_type.qualified_name
+        function_name: str = f'gen_{self.message_type.name}'
+        return MessageStrategy(function_name, ret_type, self.message_variable, body=body)
 
     def _generate_argument_names(self) -> Dict[str, str]:
         # returns a reference map, mapping user-input names to generated names
@@ -358,7 +362,7 @@ class SingleMessageStrategyBuilder:
             # store only the final form of the expression
             self.preconditions.append(phi)
 
-    def _generate_body_from_type_params(self) -> List[Statement]:
+    def _generate_message_from_type_params(self) -> List[Statement]:
         body = []
         args = []
         for name, param in self.positional_arguments:
@@ -375,7 +379,7 @@ class SingleMessageStrategyBuilder:
 
         name = self.message_type.qualified_name
         constructor = FunctionCall(name, arguments=args, keyword_arguments=kwargs)
-        body.append(Assignment('msg', constructor))
+        body.append(Assignment(self.message_variable, constructor))
         return body
 
     def _generate_param(self, name: str, param: ParameterDefinition) -> List[Statement]:
