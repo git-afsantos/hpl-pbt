@@ -339,12 +339,21 @@ class ConstantValue(DataStrategy):
 
     def is_value_impossible(self, expr: Expression) -> bool:
         if expr.is_literal:
+            assert isinstance(expr, Literal)
             if self.expression.is_literal:
+                assert isinstance(self.expression, Literal)
                 return self.expression.value != expr.value
         elif expr.is_reference:
             pass
         elif expr.is_function_call:
-            pass
+            assert isinstance(expr, FunctionCall)
+            if self.expression.is_literal:
+                assert isinstance(self.expression, Literal)
+                x = self.expression
+                if expr.function == 'len':
+                    return not x.is_int or x.value < 0
+                if expr.function == 'abs':
+                    return not (x.is_int or x.is_float) or x.value < 0
         elif expr.is_value_draw:
             pass
         return False
