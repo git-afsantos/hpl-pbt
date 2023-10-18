@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Any, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 from enum import Enum, auto
 
@@ -116,24 +116,31 @@ class NumberFieldGenerator:
             _check_lt(self.strategy.expression, value)
         elif self.strategy.is_sample:
             assert isinstance(self.strategy, RandomSample)
-            new_elements = []
-            for element in self.strategy.elements:
-                try:
-                    _check_lt(element, value)
-                    new_elements.append(element)
-                except ContradictionError:
-                    pass  # drop value
-            if not new_elements:
-                raise ContradictionError(f'{self.strategy} < {value}')
-            if len(new_elements) != len(self.strategy.elements):
-                if len(new_elements) == 1:
-                    self.strategy = ConstantValue(new_elements[0])
-                else:
-                    self.strategy = RandomSample(new_elements)
+            test = lambda x: _can_be_lt(x, value)
+            error = f'{self.strategy} < {value}'
+            self.strategy = _filter_sample_strategy(self.strategy, test, error=error)
         elif self.strategy.is_int:
             assert isinstance(self.strategy, RandomInt)
+            x = self.strategy.min_value
+            if x is not None:
+                if _is_eq(x, value):
+                    self.strategy = ConstantValue(value)
+                    return
+                _check_lt(x, value)
+            y = self.strategy.max_value
+            if y is None or _can_be_lt(value, y):
+                self.strategy = RandomInt(min_value=x, max_value=value)
         elif self.strategy.is_float:
             assert isinstance(self.strategy, RandomFloat)
+            x = self.strategy.min_value
+            if x is not None:
+                if _is_eq(x, value):
+                    self.strategy = ConstantValue(value)
+                    return
+                _check_lt(x, value)
+            y = self.strategy.max_value
+            if y is None or _can_be_lt(value, y):
+                self.strategy = RandomFloat(min_value=x, max_value=value)
 
 
 ################################################################################
@@ -141,10 +148,31 @@ class NumberFieldGenerator:
 ################################################################################
 
 
+def _filter_sample_strategy(
+    sample: RandomSample,
+    test: Callable[[Expression, Expression], bool],
+    error: str = '',
+) -> DataStrategy:
+    new_elements = [element for element in sample.elements if test(element)]
+    if not new_elements:
+        raise ContradictionError(error)
+    if len(new_elements) != len(sample.elements):
+        if len(new_elements) == 1:
+            return ConstantValue(new_elements[0])
+        else:
+            return RandomSample(new_elements)
+    return sample
+
+
 def _check_lt(x: Expression, y: Expression):
+    if not _can_be_lt(x, y):
+        raise ContradictionError(f'{x} < {y}')
+
+
+def _can_be_lt(x: Expression, y: Expression) -> bool:
     # ensures that `x < y` is possible
     if x == y:
-        raise ContradictionError(f'{x} < {y}')
+        return False
     if x.is_literal:
         assert isinstance(x, Literal)
         if y.is_function_call:
@@ -162,13 +190,17 @@ def _check_lt(x: Expression, y: Expression):
             if x.function == 'len':
                 if not y.is_int:
                     raise TypeError(f'{x} < {y}')
-                if y.value < 0:
-                    raise ContradictionError(f'{x} < {y}')
+                return y.value >= 0
             elif x.function == 'abs':
                 if not y.is_int and not y.is_float:
                     raise TypeError(f'{x} < {y}')
-                if y.value < 0:
-                    raise ContradictionError(f'{x} < {y}')
+                return y.value >= 0
+    return True
+
+
+def _is_eq(x: Expression, y: Expression) -> bool:
+    # FIXME commutative operators, etc
+    return x == y
 
 
 ################################################################################
