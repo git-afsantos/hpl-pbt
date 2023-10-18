@@ -123,13 +123,13 @@ class NumberFieldGenerator:
                     new_elements.append(element)
                 except ContradictionError:
                     pass  # drop value
+            if not new_elements:
+                raise ContradictionError(f'{self.strategy} < {value}')
             if len(new_elements) != len(self.strategy.elements):
                 if len(new_elements) == 1:
                     self.strategy = ConstantValue(new_elements[0])
-                if len(new_elements) > 1:
-                    self.strategy = RandomSample(new_elements)
                 else:
-                    raise ContradictionError(f'{self.strategy} < {value}')
+                    self.strategy = RandomSample(new_elements)
         elif self.strategy.is_int:
             assert isinstance(self.strategy, RandomInt)
         elif self.strategy.is_float:
