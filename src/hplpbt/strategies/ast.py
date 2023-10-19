@@ -259,6 +259,30 @@ def convert_to_int(expr: Expression) -> Expression:
     return FunctionCall('int', (expr,))
 
 
+# @classmethod
+# def plus(cls, a: Expression, b: Expression) -> Expression:
+#     if a.is_literal:
+#         assert isinstance(a, Literal)
+#         assert a.is_int or a.is_float
+#         if a.value == 0:
+#             return b
+#         if b.is_literal:
+#             assert isinstance(b, Literal)
+#             assert b.is_int or b.is_float
+#             if a.value == -b.value:
+#                 return Literal.zero()
+#     if b.is_literal:
+#         assert isinstance(b, Literal)
+#         if b.value == 0:
+#             return a
+#         if a.is_literal:
+#             assert isinstance(a, Literal)
+#             assert a.is_int or a.is_float
+#             if a.value == -b.value:
+#                 return Literal.zero()
+#     return cls('+', a, b)
+
+
 ################################################################################
 # Strategy AST - Value Generators
 ################################################################################
