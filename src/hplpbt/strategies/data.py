@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Final, Iterable, List, Optional, Union
 
 from enum import Enum, auto
 
@@ -16,6 +16,7 @@ from hplpbt.errors import ContradictionError
 
 from hplpbt.strategies.ast import (
     Assumption,
+    BinaryOperator,
     ConstantValue,
     DataStrategy,
     Expression,
@@ -24,6 +25,9 @@ from hplpbt.strategies.ast import (
     RandomFloat,
     RandomInt,
     RandomSample,
+    Reference,
+    UnaryOperator,
+    ValueDraw,
 )
 
 ################################################################################
@@ -171,7 +175,7 @@ def _check_lt(x: Expression, y: Expression):
 
 def _can_be_lt(x: Expression, y: Expression) -> bool:
     # ensures that `x < y` is possible
-    if x == y:
+    if _is_eq(x, y):
         return False
     if x.is_literal:
         assert isinstance(x, Literal)
@@ -198,9 +202,60 @@ def _can_be_lt(x: Expression, y: Expression) -> bool:
     return True
 
 
-def _is_eq(x: Expression, y: Expression) -> bool:
-    # FIXME commutative operators, etc
-    return x == y
+def _can_be_eq(x: Expression, y: Expression) -> bool:
+    if x.eq(y):
+        return True
+
+    if x.is_reference and y.is_reference:
+        # unknown variables can always be equal unless we have context
+        assert isinstance(x, Reference)
+        assert isinstance(y, Reference)
+        return True
+
+    if x.is_unary_operator:
+        assert isinstance(x, UnaryOperator)
+        if x.operand.eq(y):
+            return False
+    elif x.is_binary_operator:
+        assert isinstance(x, BinaryOperator)
+
+    if y.is_unary_operator:
+        assert isinstance(y, UnaryOperator)
+        if x.eq(y.operand):
+            return False
+    elif y.is_binary_operator:
+        assert isinstance(y, BinaryOperator)
+
+    if x.is_literal:
+        assert isinstance(x, Literal)
+        if y.is_literal:
+            assert isinstance(y, Literal)
+            return x.value == y.value
+        if y.is_binary_operator:
+            assert isinstance(y, BinaryOperator)
+        if y.is_value_draw:
+            assert isinstance(y, ValueDraw)
+        if y.is_function_call:
+            assert isinstance(y, FunctionCall)
+            if y.function == 'len':
+                if not x.is_int:
+                    raise TypeError(f'{x} < {y}')
+            elif y.function == 'abs':
+                if not x.is_int and not x.is_float:
+                    raise TypeError(f'{x} < {y}')
+    elif y.is_literal:
+        assert isinstance(y, Literal)
+        if x.is_function_call:
+            assert isinstance(x, FunctionCall)
+            if x.function == 'len':
+                if not y.is_int:
+                    raise TypeError(f'{x} < {y}')
+                return y.value >= 0
+            elif x.function == 'abs':
+                if not y.is_int and not y.is_float:
+                    raise TypeError(f'{x} < {y}')
+                return y.value >= 0
+    return True
 
 
 ################################################################################
