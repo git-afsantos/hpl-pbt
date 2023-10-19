@@ -63,10 +63,14 @@ class Expression:
     def is_value_draw(self) -> bool:
         return self.type == ExpressionType.DRAW
 
+    @property
+    def can_be_number(self) -> bool:
+        return True
+
     def references(self) -> Set[str]:
         raise NotImplementedError()
 
-    def eq(self, other: Expression) -> bool:
+    def eq(self, other: 'Expression') -> bool:
         return self == other
 
 
@@ -101,6 +105,10 @@ class Literal(Expression):
     @property
     def is_array(self) -> bool:
         return isinstance(self.value, (list, tuple))
+
+    @property
+    def can_be_number(self) -> bool:
+        return self.is_int or self.is_float
 
     @classmethod
     def none(cls) -> 'Literal':
@@ -157,6 +165,10 @@ class UnaryOperator(Expression):
     def type(self) -> ExpressionType:
         return ExpressionType.UNARY_OPERATOR
 
+    @property
+    def can_be_number(self) -> bool:
+        return self.token == '-' or self.token == '+' or self.token == '~'
+
     def references(self) -> Set[str]:
         return self.operand.references()
 
@@ -184,6 +196,26 @@ class BinaryOperator(Expression):
     @property
     def type(self) -> ExpressionType:
         return ExpressionType.BINARY_OPERATOR
+
+    @property
+    def can_be_number(self) -> bool:
+        return (
+            self.token == '+'
+            or self.token == '-'
+            or self.token == '*'
+            or self.token == '/'
+            or self.token == '%'
+            or self.token == '**'
+            or self.token == '=='
+            or self.token == '!='
+            or self.token == '<'
+            or self.token == '<='
+            or self.token == '>'
+            or self.token == '>='
+            or self.token == '&'
+            or self.token == '|'
+            or self.token == '^'
+        )
 
     def references(self) -> Set[str]:
         return self.operand1.references() | self.operand2.references()
@@ -214,6 +246,22 @@ class FunctionCall(Expression):
     @property
     def type(self) -> ExpressionType:
         return ExpressionType.CALL
+
+    @property
+    def can_be_number(self) -> bool:
+        return (
+            self.function == 'len'
+            or self.function == 'abs'
+            or self.function == 'max'
+            or self.function == 'min'
+            or self.function == 'sin'
+            or self.function == 'cos'
+            or self.function == 'tan'
+            or self.function == 'asin'
+            or self.function == 'acos'
+            or self.function == 'atan'
+            or self.function == 'atan2'
+        )
 
     def references(self) -> Set[str]:
         names = set()
@@ -258,6 +306,18 @@ class ValueDraw(Expression):
     @property
     def type(self) -> ExpressionType:
         return ExpressionType.DRAW
+
+    @property
+    def can_be_number(self) -> bool:
+        if self.strategy.is_int or self.strategy.is_float:
+            return True
+        if self.strategy.is_constant:
+            assert isinstance(self.strategy, ConstantValue)
+            return self.strategy.expression.can_be_number
+        if self.strategy.is_sample:
+            assert isinstance(self.strategy, RandomSample)
+            return any(value.can_be_number for value in self.strategy.elements)
+        return False
 
     def references(self) -> Set[str]:
         return self.strategy.dependencies()

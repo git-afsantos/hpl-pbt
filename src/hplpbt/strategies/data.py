@@ -127,7 +127,33 @@ class NumberFieldGenerator:
             assert isinstance(self.strategy, RandomInt)
             x = self.strategy.min_value
             if x is not None:
-                if _is_eq(x, value):
+                _check_lt(x, value)
+            y = self.strategy.max_value
+            if y is None or _can_be_lt(value, y):
+                self.strategy = RandomInt(min_value=x, max_value=value)
+        elif self.strategy.is_float:
+            assert isinstance(self.strategy, RandomFloat)
+            x = self.strategy.min_value
+            if x is not None:
+                _check_lt(x, value)
+            y = self.strategy.max_value
+            if y is None or _can_be_lt(value, y):
+                self.strategy = RandomFloat(min_value=x, max_value=value)
+
+    def lte(self, value: Expression):
+        if self.strategy.is_constant:
+            assert isinstance(self.strategy, ConstantValue)
+            _check_lt(self.strategy.expression, value)
+        elif self.strategy.is_sample:
+            assert isinstance(self.strategy, RandomSample)
+            test = lambda x: _can_be_lt(x, value)
+            error = f'{self.strategy} < {value}'
+            self.strategy = _filter_sample_strategy(self.strategy, test, error=error)
+        elif self.strategy.is_int:
+            assert isinstance(self.strategy, RandomInt)
+            x = self.strategy.min_value
+            if x is not None:
+                if x.eq(value):
                     self.strategy = ConstantValue(value)
                     return
                 _check_lt(x, value)
@@ -138,7 +164,7 @@ class NumberFieldGenerator:
             assert isinstance(self.strategy, RandomFloat)
             x = self.strategy.min_value
             if x is not None:
-                if _is_eq(x, value):
+                if x.eq(value):
                     self.strategy = ConstantValue(value)
                     return
                 _check_lt(x, value)
@@ -175,8 +201,12 @@ def _check_lt(x: Expression, y: Expression):
 
 def _can_be_lt(x: Expression, y: Expression) -> bool:
     # ensures that `x < y` is possible
-    if _is_eq(x, y):
+    if not x.can_be_number or y.can_be_number:
+        raise TypeError(f'{x} < {y}')
+
+    if x.eq(y):
         return False
+
     if x.is_literal:
         assert isinstance(x, Literal)
         if y.is_function_call:
@@ -187,6 +217,15 @@ def _can_be_lt(x: Expression, y: Expression) -> bool:
             elif y.function == 'abs':
                 if not x.is_int and not x.is_float:
                     raise TypeError(f'{x} < {y}')
+    elif x.is_value_draw:
+        assert isinstance(x, ValueDraw)
+        if x.strategy.is_bool or x.strategy.is_string or x.strategy.is_array:
+            raise TypeError(f'{x} < {y}')
+        if x.strategy.is_constant:
+            assert isinstance(x.strategy, ConstantValue)
+            value: Expression = x.strategy.expression
+            if value.
+
     elif y.is_literal:
         assert isinstance(y, Literal)
         if x.is_function_call:
@@ -203,21 +242,38 @@ def _can_be_lt(x: Expression, y: Expression) -> bool:
 
 
 def _can_be_eq(x: Expression, y: Expression) -> bool:
-    if x.eq(y):
-        return True
+    # assume some level of simplification already comes from previous steps
 
-    if x.is_reference and y.is_reference:
+    if x.is_reference or y.is_reference:
         # unknown variables can always be equal unless we have context
         assert isinstance(x, Reference)
         assert isinstance(y, Reference)
+        return True
+
+    if x.eq(y):
         return True
 
     if x.is_unary_operator:
         assert isinstance(x, UnaryOperator)
         if x.operand.eq(y):
             return False
+
     elif x.is_binary_operator:
         assert isinstance(x, BinaryOperator)
+        if x.operand1.eq(y) and x.operand2.is_literal:
+            assert isinstance(x.operand2, Literal)
+            # discard neutral operations
+            if x.token == '+' or x.token == '-':
+                return x.operand2.value == 0
+            if x.token == '/':
+                return x.operand2.value == 1
+        elif x.operand2.eq(y) and x.operand1.is_literal:
+            assert isinstance(x.operand1, Literal)
+            # discard neutral operations
+            if x.token == '+' or x.token == '-':
+                return x.operand1.value == 0
+
+    # FIXME everything below
 
     if y.is_unary_operator:
         assert isinstance(y, UnaryOperator)
