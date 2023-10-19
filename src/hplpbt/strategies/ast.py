@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Iterable, Mapping, Optional, Set, Tuple
+from typing import Any, Final, Iterable, Mapping, Optional, Set, Tuple
 
 from enum import auto, Enum
 
@@ -65,6 +65,9 @@ class Expression:
 
     def references(self) -> Set[str]:
         raise NotImplementedError()
+
+    def eq(self, other: Expression) -> bool:
+        return self == other
 
 
 @frozen
@@ -157,9 +160,19 @@ class UnaryOperator(Expression):
     def references(self) -> Set[str]:
         return self.operand.references()
 
+    def eq(self, other: Expression) -> bool:
+        if super().eq(other):
+            return True
+        if isinstance(other, UnaryOperator):
+            return self.token == other.token and self.operand.eq(other.operand)
+        return False
+
     def __str__(self) -> str:
         ws: str = ' ' if self.token.isalpha() else ''
         return f'({self.token}{ws}{self.operand})'
+
+
+_COMMUTATIVE_OPERATORS: Final[Iterable[str]] = ('+', '*', '==', '!=')
 
 
 @frozen
@@ -174,6 +187,19 @@ class BinaryOperator(Expression):
 
     def references(self) -> Set[str]:
         return self.operand1.references() | self.operand2.references()
+
+    def eq(self, other: Expression) -> bool:
+        if super().eq(other):
+            return True
+        if isinstance(other, BinaryOperator):
+            if self.token != other.token:
+                return False
+            if self.operand1.eq(other.operand1) and self.operand2.eq(other.operand2):
+                return True
+            if self.token not in _COMMUTATIVE_OPERATORS:
+                return False
+            return self.operand1.eq(other.operand2) and self.operand2.eq(other.operand1)
+        return False
 
     def __str__(self) -> str:
         return f'({self.operand1} {self.token} {self.operand2})'
@@ -196,6 +222,27 @@ class FunctionCall(Expression):
         for _name, arg in self.keyword_arguments:
             names.update(arg.references())
         return names
+
+    def eq(self, other: Expression) -> bool:
+        if super().eq(other):
+            return True
+        if isinstance(other, FunctionCall):
+            if self.function != other.function:
+                return False
+            if len(self.arguments) != len(other.arguments):
+                return False
+            if len(self.keyword_arguments) != len(other.keyword_arguments):
+                return False
+            for i in range(len(self.arguments)):
+                if not self.arguments[i].eq(other.arguments[i]):
+                    return False
+            kwargs = dict(other.keyword_arguments)
+            for name, value1 in self.keyword_arguments:
+                value2 = kwargs.get(name)
+                if not value1.eq(value2):
+                    return False
+            return True
+        return False
 
     def __str__(self) -> str:
         args = list(map(str, self.arguments))
