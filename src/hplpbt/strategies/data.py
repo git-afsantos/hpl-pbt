@@ -139,6 +139,8 @@ class NumberFieldGenerator:
             y = self.strategy.max_value
             if y is None or _can_be_lt(value, y):
                 self.strategy = RandomFloat(min_value=x, max_value=value)
+        else:
+            raise TypeError(f'{self.strategy} < {value}')
 
     def lte(self, value: Expression):
         if self.strategy.is_constant:
@@ -147,7 +149,7 @@ class NumberFieldGenerator:
         elif self.strategy.is_sample:
             assert isinstance(self.strategy, RandomSample)
             test = lambda x: _can_be_lt(x, value)
-            error = f'{self.strategy} < {value}'
+            error = f'{self.strategy} <= {value}'
             self.strategy = _filter_sample_strategy(self.strategy, test, error=error)
         elif self.strategy.is_int:
             assert isinstance(self.strategy, RandomInt)
@@ -171,6 +173,8 @@ class NumberFieldGenerator:
             y = self.strategy.max_value
             if y is None or _can_be_lt(value, y):
                 self.strategy = RandomFloat(min_value=x, max_value=value)
+        else:
+            raise TypeError(f'{self.strategy} <= {value}')
 
 
 ################################################################################
@@ -256,7 +260,12 @@ def _can_be_eq(x: Expression, y: Expression) -> bool:
     if x.is_unary_operator:
         assert isinstance(x, UnaryOperator)
         if x.operand.eq(y):
-            return False
+            if x.token == 'not':
+                return False
+            if x.operand.is_literal:
+                assert isinstance(x.operand, Literal)
+                if x.token == '+' or x.token == '-' or x.token == '~':
+                    return x.operand.value == 0
 
     elif x.is_binary_operator:
         assert isinstance(x, BinaryOperator)
@@ -273,44 +282,31 @@ def _can_be_eq(x: Expression, y: Expression) -> bool:
             if x.token == '+' or x.token == '-':
                 return x.operand1.value == 0
 
-    # FIXME everything below
-
-    if y.is_unary_operator:
+    elif y.is_unary_operator:
         assert isinstance(y, UnaryOperator)
-        if x.eq(y.operand):
-            return False
+        if y.operand.eq(x):
+            if y.token == 'not':
+                return False
+            if y.operand.is_literal:
+                assert isinstance(y.operand, Literal)
+                if y.token == '+' or y.token == '-' or y.token == '~':
+                    return y.operand.value == 0
+
     elif y.is_binary_operator:
         assert isinstance(y, BinaryOperator)
+        if y.operand1.eq(x) and y.operand2.is_literal:
+            assert isinstance(y.operand2, Literal)
+            # discard neutral operations
+            if y.token == '+' or y.token == '-':
+                return y.operand2.value == 0
+            if y.token == '/':
+                return y.operand2.value == 1
+        elif y.operand2.eq(x) and y.operand1.is_literal:
+            assert isinstance(y.operand1, Literal)
+            # discard neutral operations
+            if y.token == '+' or y.token == '-':
+                return y.operand1.value == 0
 
-    if x.is_literal:
-        assert isinstance(x, Literal)
-        if y.is_literal:
-            assert isinstance(y, Literal)
-            return x.value == y.value
-        if y.is_binary_operator:
-            assert isinstance(y, BinaryOperator)
-        if y.is_value_draw:
-            assert isinstance(y, ValueDraw)
-        if y.is_function_call:
-            assert isinstance(y, FunctionCall)
-            if y.function == 'len':
-                if not x.is_int:
-                    raise TypeError(f'{x} < {y}')
-            elif y.function == 'abs':
-                if not x.is_int and not x.is_float:
-                    raise TypeError(f'{x} < {y}')
-    elif y.is_literal:
-        assert isinstance(y, Literal)
-        if x.is_function_call:
-            assert isinstance(x, FunctionCall)
-            if x.function == 'len':
-                if not y.is_int:
-                    raise TypeError(f'{x} < {y}')
-                return y.value >= 0
-            elif x.function == 'abs':
-                if not y.is_int and not y.is_float:
-                    raise TypeError(f'{x} < {y}')
-                return y.value >= 0
     return True
 
 
