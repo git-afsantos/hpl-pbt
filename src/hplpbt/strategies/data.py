@@ -177,6 +177,69 @@ class NumberFieldGenerator:
         else:
             raise TypeError(f'{self.strategy} <= {value}')
 
+    def gt(self, value: Expression):
+        if self.strategy.is_constant:
+            assert isinstance(self.strategy, ConstantValue)
+            _check_lt(value, self.strategy.expression)
+        elif self.strategy.is_sample:
+            assert isinstance(self.strategy, RandomSample)
+            test = lambda x: _can_be_lt(value, x)
+            error = f'{self.strategy} > {value}'
+            self.strategy = _filter_sample_strategy(self.strategy, test, error=error)
+        elif self.strategy.is_int:
+            assert isinstance(self.strategy, RandomInt)
+            y = self.strategy.max_value
+            if y is not None:
+                _check_lt(value, y)
+            x = self.strategy.min_value
+            if x is None or _can_be_lt(x, value):
+                self.strategy = RandomInt(min_value=value, max_value=y)
+        elif self.strategy.is_float:
+            assert isinstance(self.strategy, RandomFloat)
+            y = self.strategy.max_value
+            if y is not None:
+                _check_lt(value, y)
+            x = self.strategy.min_value
+            if x is None or _can_be_lt(x, value):
+                self.strategy = RandomFloat(min_value=value, max_value=y)
+        else:
+            raise TypeError(f'{self.strategy} > {value}')
+
+    def gte(self, value: Expression):
+        if self.strategy.is_constant:
+            assert isinstance(self.strategy, ConstantValue)
+            if not _can_be_eq(self.strategy.expression, value):
+                _check_lt(value, self.strategy.expression)
+        elif self.strategy.is_sample:
+            assert isinstance(self.strategy, RandomSample)
+            test = lambda x: _can_be_eq(x, value) or _can_be_lt(value, x)
+            error = f'{self.strategy} >= {value}'
+            self.strategy = _filter_sample_strategy(self.strategy, test, error=error)
+        elif self.strategy.is_int:
+            assert isinstance(self.strategy, RandomInt)
+            y = self.strategy.max_value
+            if y is not None:
+                if y.eq(value):
+                    self.strategy = ConstantValue(value)
+                    return
+                _check_lt(value, y)
+            x = self.strategy.min_value
+            if x is None or _can_be_eq(x, value) or _can_be_lt(x, value):
+                self.strategy = RandomInt(min_value=value, max_value=y)
+        elif self.strategy.is_float:
+            assert isinstance(self.strategy, RandomFloat)
+            y = self.strategy.max_value
+            if y is not None:
+                if y.eq(value):
+                    self.strategy = ConstantValue(value)
+                    return
+                _check_lt(value, y)
+            x = self.strategy.min_value
+            if x is None or _can_be_eq(x, value) or _can_be_lt(x, value):
+                self.strategy = RandomFloat(min_value=value, max_value=y)
+        else:
+            raise TypeError(f'{self.strategy} >= {value}')
+
 
 ################################################################################
 # Helper Functions
