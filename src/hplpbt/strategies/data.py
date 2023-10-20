@@ -5,17 +5,13 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Callable, Final, Iterable, List, Optional, Union
-
-from enum import Enum, auto
+from typing import Callable, List, Union
 
 from attrs import define, field
 from hpl.ast import HplExpression
-from hpl.types import TypeToken
 from hplpbt.errors import ContradictionError
 
 from hplpbt.strategies.ast import (
-    Assumption,
     BinaryOperator,
     ConstantValue,
     DataStrategy,
