@@ -291,8 +291,10 @@ def _can_be_lt(x: Expression, y: Expression) -> bool:
             raise TypeError(f'{x} < {y}')
         if x.strategy.is_constant:
             assert isinstance(x.strategy, ConstantValue)
-            value: Expression = x.strategy.expression
-            if value.
+            return _can_be_lt(x.strategy.expression, y)
+        if x.strategy.is_sample:
+            assert isinstance(x.strategy, RandomSample)
+            return any(_can_be_lt(el, y) for el in x.strategy.elements)
 
     elif y.is_literal:
         assert isinstance(y, Literal)
