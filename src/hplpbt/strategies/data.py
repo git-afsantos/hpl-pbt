@@ -18,6 +18,7 @@ from hplpbt.strategies.ast import (
     Expression,
     FunctionCall,
     Literal,
+    RandomBool,
     RandomFloat,
     RandomInt,
     RandomSample,
@@ -29,6 +30,38 @@ from hplpbt.strategies.ast import (
 ################################################################################
 # Internal Structures: Basic (Data) Field Generator
 ################################################################################
+
+
+@define
+class BooleanFieldGenerator:
+    strategy: Union[RandomBool, RandomSample, ConstantValue]
+    assumptions: List[HplExpression] = field(factory=list)
+
+    @classmethod
+    def any_bool(cls) -> 'BooleanFieldGenerator':
+        return cls(RandomBool())
+
+    def assume(self, condition: HplExpression):
+        self.assumptions.append(condition)
+
+    def eq(self, value: Expression):
+        if self.strategy.is_value_impossible(value):
+            raise ContradictionError(f'{self.strategy} == {value}')
+        self.strategy = ConstantValue(value)
+
+    def neq(self, value: Expression):
+        if self.strategy.is_constant:
+            assert isinstance(self.strategy, ConstantValue)
+            if self.strategy.expression == value:
+                raise ContradictionError(f'{self.strategy.expression} != {value}')
+        elif self.strategy.is_sample:
+            assert isinstance(self.strategy, RandomSample)
+            self.strategy = self.strategy.remove(value)
+            if len(self.strategy.elements) <= 0:
+                raise ContradictionError(f'{self.strategy} != {value}')
+        else:
+            assert isinstance(self.strategy, RandomBool)
+        # self.assumptions.append(_Assumption(self._init_ref, value, "!="))
 
 
 @define
