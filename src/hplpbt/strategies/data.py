@@ -145,10 +145,11 @@ class NumberFieldGenerator:
     def lte(self, value: Expression):
         if self.strategy.is_constant:
             assert isinstance(self.strategy, ConstantValue)
-            _check_lt(self.strategy.expression, value)
+            if not _can_be_eq(self.strategy.expression, value):
+                _check_lt(self.strategy.expression, value)
         elif self.strategy.is_sample:
             assert isinstance(self.strategy, RandomSample)
-            test = lambda x: _can_be_lt(x, value)
+            test = lambda x: _can_be_eq(x, value) or _can_be_lt(x, value)
             error = f'{self.strategy} <= {value}'
             self.strategy = _filter_sample_strategy(self.strategy, test, error=error)
         elif self.strategy.is_int:
@@ -160,7 +161,7 @@ class NumberFieldGenerator:
                     return
                 _check_lt(x, value)
             y = self.strategy.max_value
-            if y is None or _can_be_lt(value, y):
+            if y is None or _can_be_eq(value, y) or _can_be_lt(value, y):
                 self.strategy = RandomInt(min_value=x, max_value=value)
         elif self.strategy.is_float:
             assert isinstance(self.strategy, RandomFloat)
@@ -171,7 +172,7 @@ class NumberFieldGenerator:
                     return
                 _check_lt(x, value)
             y = self.strategy.max_value
-            if y is None or _can_be_lt(value, y):
+            if y is None or _can_be_eq(value, y) or _can_be_lt(value, y):
                 self.strategy = RandomFloat(min_value=x, max_value=value)
         else:
             raise TypeError(f'{self.strategy} <= {value}')
