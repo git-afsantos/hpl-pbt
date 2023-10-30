@@ -5,20 +5,26 @@
 # Imports
 ###############################################################################
 
-from typing import Dict, Final, Iterable, List, Mapping, Optional, Set, Tuple, Union
+from typing import Callable, Dict, Final, Iterable, List, Mapping, Optional, Set, Tuple, Union
 
-from attrs import define, field, frozen
+from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import (
+    # HplArrayAccess,
+    HplBinaryOperator,
     HplEvent,
     HplExpression,
-    HplPredicate,
+    # HplFieldAccess,
+    HplFunctionCall,
     HplProperty,
+    HplQuantifier,
     HplSimpleEvent,
     HplSpecification,
+    HplUnaryOperator,
     HplVarReference,
 )
 from hpl.rewrite import simplify, split_and
+from hplpbt.strategies.data import BasicDataFieldGenerator, BooleanFieldGenerator, NumberFieldGenerator, StringFieldGenerator
 # from hpl.types import TypeToken
 from typeguard import check_type, typechecked
 
@@ -28,6 +34,7 @@ from hplpbt.strategies.ast import (
     Assumption,
     DataStrategy,
     FunctionCall,
+    Literal,
     RandomArray,
     RandomBool,
     RandomFloat,
@@ -60,6 +67,25 @@ STRATEGY_FACTORIES: Final[Mapping[str, DataStrategy]] = {
     'float32': RandomFloat.float32,
     'float64': RandomFloat.float64,
     'string': RandomString,
+}
+
+
+DATA_GENERATORS: Final[Mapping[str, Callable[[], BasicDataFieldGenerator]]] = {
+    'bool': BooleanFieldGenerator.any_bool,
+    'int': NumberFieldGenerator.any_int,
+    'uint': NumberFieldGenerator.uint,
+    'uint8': NumberFieldGenerator.uint8,
+    'uint16': NumberFieldGenerator.uint16,
+    'uint32': NumberFieldGenerator.uint32,
+    'uint64': NumberFieldGenerator.uint64,
+    'int8': NumberFieldGenerator.int8,
+    'int16': NumberFieldGenerator.int16,
+    'int32': NumberFieldGenerator.int32,
+    'int64': NumberFieldGenerator.int64,
+    'float': NumberFieldGenerator.any_float,
+    'float32': NumberFieldGenerator.float32,
+    'float64': NumberFieldGenerator.float64,
+    'string': StringFieldGenerator.any_string,
 }
 
 
@@ -108,6 +134,16 @@ class MessageStrategy:
         else:
             parts.append(f'    return {self.return_variable}')
         return '\n'.join(parts)
+
+
+@frozen
+class MessageStrategyArgument:
+    name: str
+    original_name: str
+    generator: BasicDataFieldGenerator
+
+    def get_reference(self) -> Reference:
+        return Reference(self.name)
 
 
 ###############################################################################
@@ -275,8 +311,8 @@ class SingleMessageStrategyBuilder:
     # the message type to build instances of
     message_type: MessageType
     # arguments to provide to the message type constructor
-    positional_arguments: List[Tuple[str, ParameterDefinition]] = field(factory=list)
-    keyword_arguments: List[Tuple[str, ParameterDefinition]] = field(factory=list)
+    positional_arguments: List[Tuple[str, MessageStrategyArgument]] = field(factory=list)
+    keyword_arguments: List[Tuple[str, MessageStrategyArgument]] = field(factory=list)
     # assumptions about the arguments to the message type constructor
     preconditions: List[HplExpression] = field(factory=list)
     # name of the variable containing the constructed message
@@ -286,20 +322,20 @@ class SingleMessageStrategyBuilder:
         # 1. Iterate over message type parameters and create local variables
         #    to hold generated data to pass into the constructor.
         #    Store the name mapping from user input variables to local variables.
-        refmap = self._generate_argument_names()
+        # 2. Create a data generator for each argument variable.
+        refmap = self._create_strategy_arguments()
 
-        # 2. Simplify the message type's precondition predicate and break it
+        # 3. Simplify the message type's precondition predicate and break it
         #    down into a list of simpler conditions.
         #    Replace references to user-input variable names with references
         #    to the generated local variable names.
         self._preprocess_preconditions(refmap)
 
-        # 3. Create a data generator for each argument variable.
-
         # 4. Iterate over argument assumptions and try to modify the strategies
         #    associated with each data generator; supply them with appropriate
         #    arguments, etc., to produce optimized code that does not rely
         #    solely on assumptions to discard invalid data.
+        self._refine_data_generators()
 
         # 5. Produce a list of statements for each data generator and sort them
         #    according to their references and dependencies.
@@ -327,7 +363,7 @@ class SingleMessageStrategyBuilder:
         function_name: str = f'gen_{self.message_type.name}'
         return MessageStrategy(function_name, ret_type, self.message_variable, body=body)
 
-    def _generate_argument_names(self) -> Dict[str, str]:
+    def _create_strategy_arguments(self) -> Dict[str, str]:
         # returns a reference map, mapping user-input names to generated names
         # resets/rebuilds positional and keyword argument lists
         self.positional_arguments.clear()
@@ -335,16 +371,31 @@ class SingleMessageStrategyBuilder:
         refmap = {}
         for i, param in enumerate(self.message_type.positional_parameters):
             variable = f'arg{i}'
-            self.positional_arguments.append((variable, param))
-            refmap[f'_{i}'] = variable
+            original_name = f'_{i}'
+            gen = self._param_data_generator(param)
+            arg = MessageStrategyArgument(variable, original_name, gen)
+            self.positional_arguments.append((variable, arg))
+            refmap[original_name] = variable
         i = len(refmap)
         for name, param in self.message_type.keyword_parameters.items():
             variable = f'arg{i}'
-            self.keyword_arguments.append((variable, param))
+            gen = self._param_data_generator(param)
+            arg = MessageStrategyArgument(variable, original_name, gen)
+            self.keyword_arguments.append((variable, arg))
             assert name not in refmap
             refmap[name] = variable
             i += 1
         return refmap
+
+    def _param_data_generator(self, param: ParameterDefinition) -> BasicDataFieldGenerator:
+        factory = DATA_GENERATORS.get(param.base_type)
+        if factory is None:
+            gen: BasicDataFieldGenerator = BasicDataFieldGenerator(RandomSpecial(param.base_type))
+        else:
+            gen = factory()
+        #if param.is_array:
+        #    s = RandomArray(s)
+        return gen
 
     def _preprocess_preconditions(self, refmap: Mapping[str, str]):
         pre = self.message_type.precondition
@@ -361,6 +412,77 @@ class SingleMessageStrategyBuilder:
                 phi = phi.replace_var_reference(alias, HplVarReference(f'@{var}'))
             # store only the final form of the expression
             self.preconditions.append(phi)
+
+    def _refine_data_generators(self):
+        # create a mapping of each argument for easier access
+        argmap: Dict[str, MessageStrategyArgument] = {}
+        for name, arg in self.positional_arguments:
+            argmap[name] = arg
+        for name, arg in self.keyword_arguments:
+            argmap[name] = arg
+
+        # iterate over all preconditions
+        for phi in self.preconditions:
+            self._refine_with(phi, argmap)
+
+    def _refine_with(self, phi: HplExpression, argmap: Dict[str, MessageStrategyArgument]):
+        assert phi.can_be_bool, str(phi)
+        if phi.is_value:
+            assert not phi.is_set
+            assert not phi.is_range
+            assert not phi.is_this_msg
+            # if phi.is_literal: pass
+            # if phi.is_reference: pass
+            if phi.is_variable:
+                assert isinstance(phi, HplVarReference)
+                name: str = phi.name
+                arg = argmap.get(name)
+                if arg is not None:
+                    arg.generator.eq(Literal.true())
+
+        elif phi.is_accessor:
+            # FIXME support this
+            # if phi.is_field: assert isinstance(phi, HplFieldAccess)
+            #if phi.is_indexed:
+            #    assert isinstance(phi, HplArrayAccess)
+            # ref = phi.base_object()
+            pass
+
+        elif phi.is_operator:
+            if isinstance(phi, HplUnaryOperator):
+                assert phi.operator.is_not
+            elif isinstance(phi, HplBinaryOperator):
+                assert not phi.operator.is_arithmetic
+                if phi.operator.is_inclusion:
+                    pass
+                elif phi.operator.is_equality:
+                    pass
+                elif phi.operator.is_inequality:
+                    pass
+                elif phi.operator.is_less_than:
+                    pass
+                elif phi.operator.is_less_than_eq:
+                    pass
+                elif phi.operator.is_greater_than:
+                    pass
+                elif phi.operator.is_greater_than_eq:
+                    pass
+                elif phi.operator.is_and:
+                    pass
+                elif phi.operator.is_or:
+                    pass
+                elif phi.operator.is_implies:
+                    pass
+                elif phi.operator.is_iff:
+                    pass
+
+        elif phi.is_function_call:
+            # FIXME support this
+            assert isinstance(phi, HplFunctionCall)
+
+        elif phi.is_quantifier:
+            # FIXME support this
+            assert isinstance(phi, HplQuantifier)
 
     def _generate_message_from_type_params(self) -> List[Statement]:
         body = []

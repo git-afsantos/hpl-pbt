@@ -821,10 +821,13 @@ class RandomSample(DataStrategy):
         return names
 
     def add(self, element: Expression) -> 'RandomSample':
-        return self if element in self.elements else RandomSample(self.elements + (element,))
+        for el in self.elements:
+            if el.eq(element):
+                return self
+        return RandomSample(self.elements + (element,))
 
     def remove(self, element: Expression) -> 'RandomSample':
-        elements = [el for el in self.elements if el != element]
+        elements = [el for el in self.elements if not el.eq(element)]
         return self if len(elements) == len(self.elements) else RandomSample(elements)
 
     def is_value_impossible(self, expr: Expression) -> bool:

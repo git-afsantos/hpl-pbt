@@ -22,6 +22,7 @@ from hplpbt.strategies.ast import (
     RandomFloat,
     RandomInt,
     RandomSample,
+    RandomString,
     Reference,
     UnaryOperator,
     ValueDraw,
@@ -33,13 +34,9 @@ from hplpbt.strategies.ast import (
 
 
 @define
-class BooleanFieldGenerator:
-    strategy: Union[RandomBool, RandomSample, ConstantValue]
+class BasicDataFieldGenerator:
+    strategy: DataStrategy
     assumptions: List[HplExpression] = field(factory=list)
-
-    @classmethod
-    def any_bool(cls) -> 'BooleanFieldGenerator':
-        return cls(RandomBool())
 
     def assume(self, condition: HplExpression):
         self.assumptions.append(condition)
@@ -52,7 +49,7 @@ class BooleanFieldGenerator:
     def neq(self, value: Expression):
         if self.strategy.is_constant:
             assert isinstance(self.strategy, ConstantValue)
-            if self.strategy.expression == value:
+            if self.strategy.expression.eq(value):
                 raise ContradictionError(f'{self.strategy.expression} != {value}')
         elif self.strategy.is_sample:
             assert isinstance(self.strategy, RandomSample)
@@ -60,15 +57,37 @@ class BooleanFieldGenerator:
             if len(self.strategy.elements) <= 0:
                 raise ContradictionError(f'{self.strategy} != {value}')
         else:
-            assert isinstance(self.strategy, RandomBool)
+            self._type_specific_neq(value)
+
+    def _type_specific_neq(self, value: Expression):
         # self.assumptions.append(_Assumption(self._init_ref, value, "!="))
+        pass
+
+    def lt(self, value: Expression):
+        raise TypeError(f'{self.strategy} < {value}')
+
+    def lte(self, value: Expression):
+        raise TypeError(f'{self.strategy} <= {value}')
+
+    def gt(self, value: Expression):
+        raise TypeError(f'{self.strategy} > {value}')
+
+    def gte(self, value: Expression):
+        raise TypeError(f'{self.strategy} >= {value}')
 
 
 @define
-class NumberFieldGenerator:
-    strategy: Union[RandomInt, RandomFloat, RandomSample, ConstantValue]
-    assumptions: List[HplExpression] = field(factory=list)
+class BooleanFieldGenerator(BasicDataFieldGenerator):
+    @classmethod
+    def any_bool(cls) -> 'BooleanFieldGenerator':
+        return cls(RandomBool())
 
+    def _type_specific_neq(self, value: Expression):
+        assert isinstance(self.strategy, RandomBool)
+
+
+@define
+class NumberFieldGenerator(BasicDataFieldGenerator):
     @classmethod
     def uint(cls) -> 'NumberFieldGenerator':
         return cls(RandomInt.uint())
@@ -121,27 +140,8 @@ class NumberFieldGenerator:
     def float64(cls) -> 'NumberFieldGenerator':
         return cls(RandomFloat.float64())
 
-    def assume(self, condition: HplExpression):
-        self.assumptions.append(condition)
-
-    def eq(self, value: Expression):
-        if self.strategy.is_value_impossible(value):
-            raise ContradictionError(f'{self.strategy} == {value}')
-        self.strategy = ConstantValue(value)
-
-    def neq(self, value: Expression):
-        if self.strategy.is_constant:
-            assert isinstance(self.strategy, ConstantValue)
-            if self.strategy.expression == value:
-                raise ContradictionError(f'{self.strategy.expression} != {value}')
-        elif self.strategy.is_sample:
-            assert isinstance(self.strategy, RandomSample)
-            self.strategy = self.strategy.remove(value)
-            if len(self.strategy.elements) <= 0:
-                raise ContradictionError(f'{self.strategy} != {value}')
-        else:
-            assert isinstance(self.strategy, (RandomInt, RandomFloat))
-        # self.assumptions.append(_Assumption(self._init_ref, value, "!="))
+    def _type_specific_neq(self, value: Expression):
+        assert isinstance(self.strategy, (RandomInt, RandomFloat))
 
     def lt(self, value: Expression):
         if self.strategy.is_constant:
@@ -268,6 +268,16 @@ class NumberFieldGenerator:
                 self.strategy = RandomFloat(min_value=value, max_value=y)
         else:
             raise TypeError(f'{self.strategy} >= {value}')
+
+
+@define
+class StringFieldGenerator(BasicDataFieldGenerator):
+    @classmethod
+    def any_string(cls) -> 'StringFieldGenerator':
+        return cls(RandomString())
+
+    def _type_specific_neq(self, value: Expression):
+        assert isinstance(self.strategy, RandomString)
 
 
 ################################################################################
