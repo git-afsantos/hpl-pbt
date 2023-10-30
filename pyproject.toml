@@ -53,3 +53,25 @@ multi_line_output = 3
 use_parentheses = true
 color_output = true
 force_grid_wrap = 0
+
+[tool.pyright]
+include = ["src"]
+exclude = ["**/templates",
+    "**/__pycache__"
+]
+ignore = ["src/**/templates"]
+# defineConstant = { DEBUG = true }
+# stubPath = "src/stubs"
+
+reportPropertyTypeMismatch = true
+reportFunctionMemberAccess = true
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportUnusedImport = true
+reportUnusedClass = true
+reportUnusedFunction = true
+
+executionEnvironments = [
+  { root = "src", extraPaths = ["tests"]},
+  { root = "src" }
+]
