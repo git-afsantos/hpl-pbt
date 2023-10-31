@@ -423,66 +423,18 @@ class SingleMessageStrategyBuilder:
 
         # iterate over all preconditions
         for phi in self.preconditions:
-            self._refine_with(phi, argmap)
-
-    def _refine_with(self, phi: HplExpression, argmap: Dict[str, MessageStrategyArgument]):
-        assert phi.can_be_bool, str(phi)
-        if phi.is_value:
-            assert not phi.is_set
-            assert not phi.is_range
-            assert not phi.is_this_msg
-            # if phi.is_literal: pass
-            # if phi.is_reference: pass
-            if phi.is_variable:
-                assert isinstance(phi, HplVarReference)
-                name: str = phi.name
-                arg = argmap.get(name)
-                if arg is not None:
-                    arg.generator.eq(Literal.true())
-
-        elif phi.is_accessor:
-            # FIXME support this
-            # if phi.is_field: assert isinstance(phi, HplFieldAccess)
-            #if phi.is_indexed:
-            #    assert isinstance(phi, HplArrayAccess)
-            # ref = phi.base_object()
-            pass
-
-        elif phi.is_operator:
-            if isinstance(phi, HplUnaryOperator):
-                assert phi.operator.is_not
-            elif isinstance(phi, HplBinaryOperator):
-                assert not phi.operator.is_arithmetic
-                if phi.operator.is_inclusion:
-                    pass
-                elif phi.operator.is_equality:
-                    pass
-                elif phi.operator.is_inequality:
-                    pass
-                elif phi.operator.is_less_than:
-                    pass
-                elif phi.operator.is_less_than_eq:
-                    pass
-                elif phi.operator.is_greater_than:
-                    pass
-                elif phi.operator.is_greater_than_eq:
-                    pass
-                elif phi.operator.is_and:
-                    pass
-                elif phi.operator.is_or:
-                    pass
-                elif phi.operator.is_implies:
-                    pass
-                elif phi.operator.is_iff:
-                    pass
-
-        elif phi.is_function_call:
-            # FIXME support this
-            assert isinstance(phi, HplFunctionCall)
-
-        elif phi.is_quantifier:
-            # FIXME support this
-            assert isinstance(phi, HplQuantifier)
+            refs = phi.external_references()
+            # add the assumption just to the first known variable
+            # other variables should be related to it
+            for name in refs:
+                if not name in argmap:
+                    break
+            else:
+                for name in refs:
+                    arg = argmap.get(name)
+                    if not arg:
+                        continue
+                    arg.generator.assume(phi)
 
     def _generate_message_from_type_params(self) -> List[Statement]:
         body = []
