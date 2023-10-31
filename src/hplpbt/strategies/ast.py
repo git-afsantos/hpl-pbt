@@ -5,13 +5,19 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Final, Iterable, Mapping, Optional, Set, Tuple
+from typing import Any, Final, Iterable, Optional, Set, Tuple
 
 from enum import auto, Enum
 
 from attrs import field, frozen
 from attrs.validators import deep_iterable, instance_of, optional
-from hpl.ast import HplExpression
+from hpl.ast import (
+    HplBinaryOperator,
+    HplExpression,
+    HplFunctionCall,
+    HplQuantifier,
+    HplUnaryOperator,
+)
 from typeguard import check_type, typechecked
 
 ################################################################################
@@ -346,13 +352,25 @@ def expression_from_hpl(expr: HplExpression) -> Expression:
         if expr.is_this_msg:
             return Reference('msg')
     elif expr.is_operator:
-        pass
+        if isinstance(expr, HplUnaryOperator):
+            a = expression_from_hpl(expr.operand)
+            return UnaryOperator(expr.operator.token, a)
+        elif isinstance(expr, HplBinaryOperator):
+            a = expression_from_hpl(expr.operand1)
+            b = expression_from_hpl(expr.operand2)
+            return BinaryOperator(expr.operator.token, a, b)
     elif expr.is_function_call:
-        pass
+        assert isinstance(expr, HplFunctionCall)
+        args = tuple(map(expression_from_hpl, expr.arguments))
+        return FunctionCall(expr.function.name, arguments=args)
     elif expr.is_quantifier:
-        pass
+        assert isinstance(expr, HplQuantifier)
+        if expr.is_universal:
+            pass  # call to all()
+        else:
+            pass  # call to any()
     elif expr.is_accessor:
-        pass
+        pass  # Reference(str(expr)[1:])  # remove '@'
     raise ValueError(f'unable to handle HplExpression: {expr!r}')
 
 
