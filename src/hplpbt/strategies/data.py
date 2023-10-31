@@ -5,10 +5,17 @@
 # Imports
 ###############################################################################
 
-from typing import Callable, List, Union
+from typing import Callable, List
 
 from attrs import define, field
-from hpl.ast import HplExpression
+from hpl.ast import (
+    HplBinaryOperator,
+    HplExpression,
+    HplFunctionCall,
+    HplQuantifier,
+    HplUnaryOperator,
+    HplVarReference,
+)
 from hplpbt.errors import ContradictionError
 
 from hplpbt.strategies.ast import (
@@ -38,8 +45,65 @@ class BasicDataFieldGenerator:
     strategy: DataStrategy
     assumptions: List[HplExpression] = field(factory=list)
 
-    def assume(self, condition: HplExpression):
-        self.assumptions.append(condition)
+    def assume(self, phi: HplExpression):
+        if not phi.can_be_bool:
+            raise TypeError(f'not a boolean condition: {phi}')
+        # self.assumptions.append(phi)
+
+        if phi.is_value:
+            assert not phi.is_set
+            assert not phi.is_range
+            assert not phi.is_this_msg
+            # if phi.is_literal: pass
+            # if phi.is_reference: pass
+            if phi.is_variable:
+                assert isinstance(phi, HplVarReference)
+                self.eq(Literal.true())
+
+        elif phi.is_accessor:
+            # FIXME support this
+            # if phi.is_field: assert isinstance(phi, HplFieldAccess)
+            #if phi.is_indexed:
+            #    assert isinstance(phi, HplArrayAccess)
+            # ref = phi.base_object()
+            pass
+
+        elif phi.is_operator:
+            if isinstance(phi, HplUnaryOperator):
+                assert phi.operator.is_not
+
+            elif isinstance(phi, HplBinaryOperator):
+                assert not phi.operator.is_arithmetic
+                if phi.operator.is_inclusion:
+                    pass
+                elif phi.operator.is_equality:
+                    pass
+                elif phi.operator.is_inequality:
+                    pass
+                elif phi.operator.is_less_than:
+                    pass
+                elif phi.operator.is_less_than_eq:
+                    pass
+                elif phi.operator.is_greater_than:
+                    pass
+                elif phi.operator.is_greater_than_eq:
+                    pass
+                elif phi.operator.is_and:
+                    pass
+                elif phi.operator.is_or:
+                    pass
+                elif phi.operator.is_implies:
+                    pass
+                elif phi.operator.is_iff:
+                    pass
+
+        elif phi.is_function_call:
+            # FIXME support this
+            assert isinstance(phi, HplFunctionCall)
+
+        elif phi.is_quantifier:
+            # FIXME support this
+            assert isinstance(phi, HplQuantifier)
 
     def eq(self, value: Expression):
         if self.strategy.is_value_impossible(value):
