@@ -424,17 +424,15 @@ class SingleMessageStrategyBuilder:
         # iterate over all preconditions
         for phi in self.preconditions:
             refs = phi.external_references()
-            # add the assumption just to the first known variable
-            # other variables should be related to it
+            # ignore preconditions that do not have references to arguments
+            # or preconditions that have references to unknown variables
+            if not refs or any(not name in argmap for name in refs):
+                continue
+            # process precondition with data generators
+            # use just one, other variables will be related to it
             for name in refs:
-                if not name in argmap:
-                    break
-            else:
-                for name in refs:
-                    arg = argmap.get(name)
-                    if not arg:
-                        continue
-                    arg.generator.assume(phi)
+                arg = argmap[name].generator.assume(phi)
+                break
 
     def _generate_message_from_type_params(self) -> List[Statement]:
         body = []
