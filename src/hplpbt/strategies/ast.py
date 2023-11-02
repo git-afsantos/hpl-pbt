@@ -12,9 +12,11 @@ from enum import auto, Enum
 from attrs import field, frozen
 from attrs.validators import deep_iterable, instance_of, optional
 from hpl.ast import (
+    HplArrayAccess,
     HplBinaryOperator,
     HplDataAccess,
     HplExpression,
+    HplFieldAccess,
     HplFunctionCall,
     HplQuantifier,
     HplUnaryOperator,
@@ -33,6 +35,8 @@ class ExpressionType(Enum):
     BINARY_OPERATOR = auto()
     CALL = auto()
     ITERATOR = auto()
+    DOT_ACCESS = auto()
+    KEY_ACCESS = auto()
     DRAW = auto()
 
 
@@ -70,6 +74,14 @@ class Expression:
     @property
     def is_iterator(self) -> bool:
         return self.type == ExpressionType.ITERATOR
+
+    @property
+    def is_dot_access(self) -> bool:
+        return self.type == ExpressionType.DOT_ACCESS
+
+    @property
+    def is_key_access(self) -> bool:
+        return self.type == ExpressionType.KEY_ACCESS
 
     @property
     def is_value_draw(self) -> bool:
@@ -329,6 +341,32 @@ class IteratorExpression(Expression):
 
 
 @frozen
+class DotAccess(Expression):
+    expression: Expression
+    name: str
+
+    @property
+    def type(self) -> ExpressionType:
+        return ExpressionType.DOT_ACCESS
+
+    def __str__(self) -> str:
+        return f'{self.expression}.{self.name}'
+
+
+@frozen
+class KeyAccess(Expression):
+    expression: Expression
+    key: Expression
+
+    @property
+    def type(self) -> ExpressionType:
+        return ExpressionType.KEY_ACCESS
+
+    def __str__(self) -> str:
+        return f'{self.expression}[{self.key}]'
+
+
+@frozen
 class ValueDraw(Expression):
     strategy: 'DataStrategy'
 
@@ -398,11 +436,13 @@ def expression_from_hpl(expr: HplExpression) -> Expression:
             return FunctionCall('any', arguments=(it,))
     elif expr.is_accessor:
         assert isinstance(expr, HplDataAccess)
-        # FIXME
-        # if expr.is_field:
-        # elif expr.is_indexed:
-        ref = str(expr)
-        return Reference(ref[1:]) if ref.startswith('@') else Reference(ref)
+        obj = expression_from_hpl(expr.object)
+        if expr.is_field:
+            assert isinstance(expr, HplFieldAccess)
+            return DotAccess(obj, expr.field)
+        elif expr.is_indexed:
+            assert isinstance(expr, HplArrayAccess)
+            return KeyAccess(obj, expression_from_hpl(expr.index))
     raise ValueError(f'unable to handle HplExpression: {expr!r}')
 
 
