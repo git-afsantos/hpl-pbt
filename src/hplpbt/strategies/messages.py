@@ -11,16 +11,12 @@ from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import (
     # HplArrayAccess,
-    HplBinaryOperator,
     HplEvent,
     HplExpression,
     # HplFieldAccess,
-    HplFunctionCall,
     HplProperty,
-    HplQuantifier,
     HplSimpleEvent,
     HplSpecification,
-    HplUnaryOperator,
     HplVarReference,
 )
 from hpl.rewrite import simplify, split_and
@@ -34,7 +30,6 @@ from hplpbt.strategies.ast import (
     Assumption,
     DataStrategy,
     FunctionCall,
-    Literal,
     RandomArray,
     RandomBool,
     RandomFloat,
