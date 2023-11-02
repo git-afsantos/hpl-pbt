@@ -334,6 +334,27 @@ class IteratorExpression(Expression):
     def type(self) -> ExpressionType:
         return ExpressionType.ITERATOR
 
+    @property
+    def can_be_number(self) -> bool:
+        return False
+
+    def eq(self, other: Expression) -> bool:
+        if super().eq(other):
+            return True
+        if isinstance(other, IteratorExpression):
+            if not self.expression.eq(other.expression):
+                return False
+            if self.variable != other.variable:
+                return False
+            if not self.domain.eq(other.domain):
+                return False
+            if (self.condition is None) is not (other.condition is None):
+                return False
+            if self.condition is not None and not self.condition.eq(other.condition):
+                return False
+            return True
+        return False
+
     def __str__(self) -> str:
         if self.condition is None:
             return f'{self.expression} for {self.variable} in {self.domain}'
@@ -349,6 +370,17 @@ class DotAccess(Expression):
     def type(self) -> ExpressionType:
         return ExpressionType.DOT_ACCESS
 
+    def eq(self, other: Expression) -> bool:
+        if super().eq(other):
+            return True
+        if isinstance(other, DotAccess):
+            if not self.expression.eq(other.expression):
+                return False
+            if self.name != other.name:
+                return False
+            return True
+        return False
+
     def __str__(self) -> str:
         return f'{self.expression}.{self.name}'
 
@@ -361,6 +393,17 @@ class KeyAccess(Expression):
     @property
     def type(self) -> ExpressionType:
         return ExpressionType.KEY_ACCESS
+
+    def eq(self, other: Expression) -> bool:
+        if super().eq(other):
+            return True
+        if isinstance(other, DotAccess):
+            if not self.expression.eq(other.expression):
+                return False
+            if not self.key.eq(other.key):
+                return False
+            return True
+        return False
 
     def __str__(self) -> str:
         return f'{self.expression}[{self.key}]'
