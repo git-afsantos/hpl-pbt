@@ -13,6 +13,7 @@ from attrs import field, frozen
 from attrs.validators import deep_iterable, instance_of, optional
 from hpl.ast import (
     HplBinaryOperator,
+    HplDataAccess,
     HplExpression,
     HplFunctionCall,
     HplQuantifier,
@@ -31,6 +32,7 @@ class ExpressionType(Enum):
     UNARY_OPERATOR = auto()
     BINARY_OPERATOR = auto()
     CALL = auto()
+    ITERATOR = auto()
     DRAW = auto()
 
 
@@ -64,6 +66,10 @@ class Expression:
     @property
     def is_function_call(self) -> bool:
         return self.type == ExpressionType.CALL
+
+    @property
+    def is_iterator(self) -> bool:
+        return self.type == ExpressionType.ITERATOR
 
     @property
     def is_value_draw(self) -> bool:
@@ -306,6 +312,23 @@ class FunctionCall(Expression):
 
 
 @frozen
+class IteratorExpression(Expression):
+    expression: Expression
+    variable: str
+    domain: Expression
+    condition: Optional[Expression] = None
+
+    @property
+    def type(self) -> ExpressionType:
+        return ExpressionType.ITERATOR
+
+    def __str__(self) -> str:
+        if self.condition is None:
+            return f'{self.expression} for {self.variable} in {self.domain}'
+        return f'{self.expression} for {self.variable} in {self.domain} if {self.condition}'
+
+
+@frozen
 class ValueDraw(Expression):
     strategy: 'DataStrategy'
 
@@ -348,7 +371,7 @@ def expression_from_hpl(expr: HplExpression) -> Expression:
                 ub = BinaryOperator('+', ub, Literal(1))
             return FunctionCall('range', (lb, ub))
         if expr.is_variable:
-            return Reference(expr.token)
+            return Reference(expr.name)
         if expr.is_this_msg:
             return Reference('msg')
     elif expr.is_operator:
@@ -356,21 +379,30 @@ def expression_from_hpl(expr: HplExpression) -> Expression:
             a = expression_from_hpl(expr.operand)
             return UnaryOperator(expr.operator.token, a)
         elif isinstance(expr, HplBinaryOperator):
+            op = '==' if expr.operator.is_equality else expr.operator.token
             a = expression_from_hpl(expr.operand1)
             b = expression_from_hpl(expr.operand2)
-            return BinaryOperator(expr.operator.token, a, b)
+            return BinaryOperator(op, a, b)
     elif expr.is_function_call:
         assert isinstance(expr, HplFunctionCall)
         args = tuple(map(expression_from_hpl, expr.arguments))
         return FunctionCall(expr.function.name, arguments=args)
     elif expr.is_quantifier:
         assert isinstance(expr, HplQuantifier)
+        phi = expression_from_hpl(expr.condition)
+        domain = expression_from_hpl(expr.domain)
+        it = IteratorExpression(phi, expr.variable, domain)
         if expr.is_universal:
-            pass  # call to all()
+            return FunctionCall('all', arguments=(it,))
         else:
-            pass  # call to any()
+            return FunctionCall('any', arguments=(it,))
     elif expr.is_accessor:
-        pass  # Reference(str(expr)[1:])  # remove '@'
+        assert isinstance(expr, HplDataAccess)
+        # FIXME
+        # if expr.is_field:
+        # elif expr.is_indexed:
+        ref = str(expr)
+        return Reference(ref[1:]) if ref.startswith('@') else Reference(ref)
     raise ValueError(f'unable to handle HplExpression: {expr!r}')
 
 
