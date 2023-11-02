@@ -491,8 +491,12 @@ def expression_from_hpl(expr: HplExpression) -> Expression:
 
 @typechecked
 def convert_to_int(expr: Expression) -> Expression:
-    if expr.is_literal and expr.is_int:
-        return expr
+    if expr.is_literal:
+        assert isinstance(expr, Literal)
+        if expr.is_int:
+            return expr
+        if expr.is_float and expr.value == int(expr.value):
+            return Literal(int(expr.value))
     if expr.is_function_call:
         if expr.function == 'len':
             return expr
@@ -648,6 +652,13 @@ class RandomBool(DataStrategy):
         return 'booleans()'
 
 
+@typechecked
+def _maybe_convert_to_int(expr: Optional[Expression]) -> Optional[Expression]:
+    if expr is None:
+        return None
+    return convert_to_int(expr)
+
+
 @frozen
 class RandomInt(DataStrategy):
     # min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
@@ -655,10 +666,12 @@ class RandomInt(DataStrategy):
     min_value: Optional[Expression] = field(
         default=None,
         validator=optional(instance_of(Expression)),
+        converter=_maybe_convert_to_int,
     )
     max_value: Optional[Expression] = field(
         default=None,
         validator=optional(instance_of(Expression)),
+        converter=_maybe_convert_to_int,
     )
 
     @property

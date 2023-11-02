@@ -30,7 +30,6 @@ from hplpbt.strategies.ast import (
     Assumption,
     DataStrategy,
     FunctionCall,
-    RandomArray,
     RandomBool,
     RandomFloat,
     RandomInt,
@@ -432,12 +431,12 @@ class SingleMessageStrategyBuilder:
     def _generate_message_from_type_params(self) -> List[Statement]:
         body = []
         args = []
-        for name, param in self.positional_arguments:
-            body.extend(self._generate_param(name, param))
+        for name, arg in self.positional_arguments:
+            body.extend(self._generate_argument(name, arg))
             args.append(Reference(name))
         kwargs = []
-        for name, param in self.keyword_arguments:
-            body.extend(self._generate_param(name, param))
+        for name, arg in self.keyword_arguments:
+            body.extend(self._generate_argument(name, arg))
             kwargs.append((name, Reference(name)))
         for phi in self.preconditions:
             body.append(Assumption(phi))
@@ -449,11 +448,7 @@ class SingleMessageStrategyBuilder:
         body.append(Assignment(self.message_variable, constructor))
         return body
 
-    def _generate_param(self, name: str, param: ParameterDefinition) -> List[Statement]:
+    def _generate_argument(self, name: str, arg: MessageStrategyArgument) -> List[Statement]:
         statements = []
-        factory = STRATEGY_FACTORIES.get(param.base_type)
-        s: DataStrategy = RandomSpecial(param.base_type) if factory is None else factory()
-        if param.is_array:
-            s = RandomArray(s)
-        statements.append(Assignment.draw(name, s))
+        statements.append(Assignment.draw(name, arg.generator.strategy))
         return statements

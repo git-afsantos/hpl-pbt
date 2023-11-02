@@ -33,6 +33,7 @@ from hplpbt.strategies.ast import (
     Reference,
     UnaryOperator,
     ValueDraw,
+    expression_from_hpl,
 )
 
 ################################################################################
@@ -50,6 +51,7 @@ class BasicDataFieldGenerator:
             raise TypeError(f'not a boolean condition: {phi}')
         # self.assumptions.append(phi)
 
+        # def wip(self, phi: HplExpression):
         if phi.is_value:
             assert not phi.is_set
             assert not phi.is_range
@@ -75,20 +77,23 @@ class BasicDataFieldGenerator:
 
             elif isinstance(phi, HplBinaryOperator):
                 assert not phi.operator.is_arithmetic
+                if not isinstance(phi.operand1, HplVarReference):
+                    return
+                x = expression_from_hpl(phi.operand2)
                 if phi.operator.is_inclusion:
                     pass
                 elif phi.operator.is_equality:
-                    pass
+                    self.eq(x)
                 elif phi.operator.is_inequality:
-                    pass
+                    self.neq(x)
                 elif phi.operator.is_less_than:
-                    pass
+                    self.lt(x)
                 elif phi.operator.is_less_than_eq:
-                    pass
+                    self.lte(x)
                 elif phi.operator.is_greater_than:
-                    pass
+                    self.gt(x)
                 elif phi.operator.is_greater_than_eq:
-                    pass
+                    self.gte(x)
                 elif phi.operator.is_and:
                     pass
                 elif phi.operator.is_or:
@@ -292,6 +297,7 @@ class NumberFieldGenerator(BasicDataFieldGenerator):
                 _check_lt(x, value)
             y = self.strategy.max_value
             if y is None or _can_be_lt(value, y):
+                value = BinaryOperator('-', value, Literal(1))
                 self.strategy = RandomInt(min_value=x, max_value=value)
         elif self.strategy.is_float:
             assert isinstance(self.strategy, RandomFloat)
@@ -301,6 +307,7 @@ class NumberFieldGenerator(BasicDataFieldGenerator):
             y = self.strategy.max_value
             if y is None or _can_be_lt(value, y):
                 self.strategy = RandomFloat(min_value=x, max_value=value)
+                # self.strategy.exclude_max = True
         else:
             raise TypeError(f'{self.strategy} < {value}')
 
@@ -355,6 +362,7 @@ class NumberFieldGenerator(BasicDataFieldGenerator):
                 _check_lt(value, y)
             x = self.strategy.min_value
             if x is None or _can_be_lt(x, value):
+                value = BinaryOperator('+', value, Literal(1))
                 self.strategy = RandomInt(min_value=value, max_value=y)
         elif self.strategy.is_float:
             assert isinstance(self.strategy, RandomFloat)
@@ -364,6 +372,7 @@ class NumberFieldGenerator(BasicDataFieldGenerator):
             x = self.strategy.min_value
             if x is None or _can_be_lt(x, value):
                 self.strategy = RandomFloat(min_value=value, max_value=y)
+                # self.strategy.exclude_min = True
         else:
             raise TypeError(f'{self.strategy} > {value}')
 
@@ -441,7 +450,7 @@ def _check_lt(x: Expression, y: Expression):
 
 def _can_be_lt(x: Expression, y: Expression) -> bool:
     # ensures that `x < y` is possible
-    if not x.can_be_number or y.can_be_number:
+    if not x.can_be_number or not y.can_be_number:
         raise TypeError(f'{x} < {y}')
 
     if x.eq(y):
