@@ -71,6 +71,67 @@ class BasicDataFieldGenerator:
         elif phi.is_operator:
             if isinstance(phi, HplUnaryOperator):
                 assert phi.operator.is_not
+                self.reject(phi.operand)
+
+            elif isinstance(phi, HplBinaryOperator):
+                assert not phi.operator.is_arithmetic
+                if phi.operator.is_inclusion:
+                    pass
+                elif phi.operator.is_equality:
+                    pass
+                elif phi.operator.is_inequality:
+                    pass
+                elif phi.operator.is_less_than:
+                    pass
+                elif phi.operator.is_less_than_eq:
+                    pass
+                elif phi.operator.is_greater_than:
+                    pass
+                elif phi.operator.is_greater_than_eq:
+                    pass
+                elif phi.operator.is_and:
+                    pass
+                elif phi.operator.is_or:
+                    pass
+                elif phi.operator.is_implies:
+                    pass
+                elif phi.operator.is_iff:
+                    pass
+
+        elif phi.is_function_call:
+            # FIXME support this
+            assert isinstance(phi, HplFunctionCall)
+
+        elif phi.is_quantifier:
+            # FIXME support this
+            assert isinstance(phi, HplQuantifier)
+
+    def reject(self, phi: HplExpression):
+        if not phi.can_be_bool:
+            raise TypeError(f'not a boolean condition: {phi}')
+
+        if phi.is_value:
+            assert not phi.is_set
+            assert not phi.is_range
+            assert not phi.is_this_msg
+            # if phi.is_literal: pass
+            # if phi.is_reference: pass
+            if phi.is_variable:
+                assert isinstance(phi, HplVarReference)
+                self.eq(Literal.false())
+
+        elif phi.is_accessor:
+            # FIXME support this
+            # if phi.is_field: assert isinstance(phi, HplFieldAccess)
+            #if phi.is_indexed:
+            #    assert isinstance(phi, HplArrayAccess)
+            # ref = phi.base_object()
+            pass
+
+        elif phi.is_operator:
+            if isinstance(phi, HplUnaryOperator):
+                assert phi.operator.is_not
+                self.assume(phi.operand)
 
             elif isinstance(phi, HplBinaryOperator):
                 assert not phi.operator.is_arithmetic
@@ -109,6 +170,14 @@ class BasicDataFieldGenerator:
         if self.strategy.is_value_impossible(value):
             raise ContradictionError(f'{self.strategy} == {value}')
         self.strategy = ConstantValue(value)
+
+    def one_of(self, value: Expression):
+        if self.strategy.is_value_impossible(value):
+            raise ContradictionError(f'{self.strategy} in {value}')
+        if self.strategy.is_constant:
+            assert isinstance(self.strategy, ConstantValue)
+        elif self.strategy.is_sample:
+            assert isinstance(self.strategy, RandomSample)
 
     def neq(self, value: Expression):
         if self.strategy.is_constant:

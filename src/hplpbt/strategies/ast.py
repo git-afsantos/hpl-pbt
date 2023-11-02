@@ -602,6 +602,8 @@ class ConstantValue(DataStrategy):
         return self.expression.references()
 
     def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_iterator:
+            return True
         if expr.is_literal:
             assert isinstance(expr, Literal)
             if self.expression.is_literal:
@@ -636,6 +638,8 @@ class RandomBool(DataStrategy):
         return set()
 
     def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_iterator:
+            return True
         if expr.is_literal:
             return not expr.is_bool
         return False
@@ -723,6 +727,8 @@ class RandomInt(DataStrategy):
         return dependencies
 
     def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_iterator:
+            return True
         if expr.is_literal:
             if expr.is_float:
                 k: int = int(expr.value)
@@ -796,6 +802,8 @@ class RandomFloat(DataStrategy):
         return dependencies
 
     def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_iterator:
+            return True
         if expr.is_literal:
             if not expr.is_float and not expr.is_int:
                 return True
@@ -855,6 +863,8 @@ class RandomString(DataStrategy):
         return dependencies
 
     def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_iterator:
+            return True
         if expr.is_literal:
             return not expr.is_string
         elif expr.is_function_call:
@@ -917,6 +927,8 @@ class RandomArray(DataStrategy):
         return dependencies
 
     def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_iterator:
+            return True
         if expr.is_literal:
             return not expr.is_array
         return False
@@ -964,6 +976,8 @@ class RandomSample(DataStrategy):
         return self if len(elements) == len(self.elements) else RandomSample(elements)
 
     def is_value_impossible(self, expr: Expression) -> bool:
+        if expr.is_iterator:
+            return True
         if not all(e.is_literal for e in self.elements):
             return False
         if expr.is_literal:
