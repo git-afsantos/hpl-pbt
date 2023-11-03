@@ -5,19 +5,22 @@
 # Imports
 ###############################################################################
 
-from typing import Callable, List
+from typing import Callable, List, Mapping
 
 from attrs import define, field
 from hpl.ast import (
     HplBinaryOperator,
+    HplDataAccess,
     HplExpression,
     HplFunctionCall,
     HplQuantifier,
     HplUnaryOperator,
+    HplValue,
     HplVarReference,
 )
-from hplpbt.errors import ContradictionError
+from hpl.rewrite import is_true
 
+from hplpbt.errors import ContradictionError
 from hplpbt.strategies.ast import (
     BinaryOperator,
     ConstantValue,
@@ -37,8 +40,128 @@ from hplpbt.strategies.ast import (
 )
 
 ################################################################################
-# Internal Structures: Basic (Data) Field Generator
+# Internal Structures: Data Generators
 ################################################################################
+
+
+@define
+class DataVariable:
+    base_strategy: DataStrategy
+    branches: List[DataStrategy] = field(factory=list)
+
+    def eq(self, value: HplValue):
+        pass
+
+    def neq(self, value: HplValue):
+        pass
+
+    def lt(self, value: HplValue):
+        pass
+
+    def lte(self, value: HplValue):
+        pass
+
+    def gt(self, value: HplValue):
+        pass
+
+    def gte(self, value: HplValue):
+        pass
+
+
+@define
+class DataGenerator:
+    variables: Mapping[str, DataVariable]
+
+    def assume(self, phi: HplExpression):
+        if not phi.can_be_bool:
+            raise TypeError(f'not a boolean condition: {phi}')
+        if phi.is_value:
+            assert isinstance(phi, HplValue)
+            return self._assume_value(phi)
+        if phi.is_accessor:
+            assert isinstance(phi, HplDataAccess)
+            return self._assume_accessor(phi)
+        if phi.is_operator:
+            if isinstance(phi, HplUnaryOperator):
+                assert phi.operator.is_not
+                return self.reject(phi.operand)
+            if isinstance(phi, HplBinaryOperator):
+                return self._assume_binary_operator(phi)
+            return  # unknown/unsupported
+        if phi.is_function_call:
+            assert isinstance(phi, HplFunctionCall)
+            return self._assume_function_call(phi)
+        if phi.is_quantifier:
+            assert isinstance(phi, HplQuantifier)
+            return self._assume_quantifier(phi)
+
+    def _assume_value(self, value: HplValue):
+        assert not value.is_set
+        assert not value.is_range
+        assert not value.is_this_msg
+        # if phi.is_literal: pass
+        # if phi.is_reference: pass
+        if value.is_variable:
+            assert isinstance(value, HplVarReference)
+            var = self.variables[value.name]
+            # self.eq(value.name, Literal.true())
+
+    def _assume_accessor(self, accessor: HplDataAccess):
+        # FIXME support this
+        # if phi.is_field: assert isinstance(phi, HplFieldAccess)
+        #if phi.is_indexed:
+        #    assert isinstance(phi, HplArrayAccess)
+        # ref = phi.base_object()
+        pass
+
+    def _assume_binary_operator(self, expr: HplBinaryOperator):
+        a = expr.operand1
+        b = expr.operand2
+        operator = expr.operator
+        assert not operator.is_arithmetic
+        if not isinstance(a, HplVarReference):
+            if not isinstance(b, HplVarReference):
+                return
+        x = expression_from_hpl(expr.operand2)
+        if operator.is_inclusion:
+            pass
+        elif operator.is_equality:
+            self.eq(x)
+        elif operator.is_inequality:
+            self.neq(x)
+        elif operator.is_less_than:
+            self.lt(x)
+        elif operator.is_less_than_eq:
+            self.lte(x)
+        elif operator.is_greater_than:
+            self.gt(x)
+        elif operator.is_greater_than_eq:
+            self.gte(x)
+        elif operator.is_and:
+            self.assume(expr.operand1)
+            self.assume(expr.operand2)
+        elif operator.is_or or operator.is_implies:
+            clauses = split_or(expr)
+            # create branches for each clause
+            for clause in clauses:
+                if is_true(clause):
+                    return  # tautology; nothing to do
+        elif operator.is_iff:
+            pass
+
+    def _assume_function_call(self, call: HplFunctionCall):
+        # FIXME support this
+        pass
+
+    def _assume_quantifier(self, quantifier: HplQuantifier):
+        # FIXME support this
+        pass
+
+    def reject(self, phi: HplExpression):
+        if not phi.can_be_bool:
+            raise TypeError(f'not a boolean condition: {phi}')
+
+
 
 
 @define
