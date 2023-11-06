@@ -5,13 +5,17 @@
 # Imports
 ################################################################################
 
+from typing import List
+
 from hpl.ast import (
     And,
     Exists,
     HplBinaryOperator,
+    HplDataAccess,
     HplExpression,
     HplQuantifier,
     HplUnaryOperator,
+    HplValue,
     Not,
     Or,
 )
@@ -25,7 +29,6 @@ from hpl.rewrite import (
     is_implies,
     is_not,
     is_or,
-    is_self_or_field,
     is_true,
 )
 from typeguard import typechecked
@@ -139,76 +142,9 @@ def canonical_form(expr: HplBinaryOperator) -> HplBinaryOperator:
     b: HplExpression = _simplify(expr.operand2)
 
     if a is expr.operand1 and b is expr.operand2:
-        _canonical_lhs(expr)
+        return _canonical_lhs(expr)
     else:
-        _canonical_lhs(HplBinaryOperator(op, a, b))
-
-
-
-    # always push literals to the RHS
-    if isinstance(b, HplLiteral):
-        return expr if noop else HplBinaryOperator(op, a, b)
-
-    # always push self references to the LHS
-    if is_self_or_field(a, deep=True):
-        return expr if noop else HplBinaryOperator(op, a, b)
-
-    # (1 < x) == (x > 1)
-    flip: bool = isinstance(a, HplLiteral)
-    # (@y < x) == (x > @y)
-    flip = flip or is_self_or_field(b, deep=True)
-    if flip:
-        if op.commutative:
-            return expr.but(operand1=b, operand2=a)
-        inv: Optional[BinaryOperatorDefinition] = INVERSE_OPERATORS.get(op)
-        if inv is None:
-            return expr if noop else HplBinaryOperator(op, a, b)
-        return HplBinaryOperator(inv, b, a)
-
-    if op.associative:
-        left: bool = isinstance(a, HplBinaryOperator) and a.operator == op
-        right: bool = isinstance(b, HplBinaryOperator) and b.operator == op
-        if left and right:
-            a1: HplExpression = a.operand1
-            a2: HplExpression = a.operand2
-            b1: HplExpression = b.operand1
-            b2: HplExpression = b.operand2
-            if isinstance(a2, HplLiteral):
-                noop = False
-                x = b1
-                b1 = b2
-                b2 = a2
-                a2 = x
-                # it is now possible to have redundancy on the LHS
-                a = _simplify_binary_operator(HplBinaryOperator(op, a1, a2))
-                # it is now possible to have two literals on the RHS
-                b = _simplify_binary_operator(HplBinaryOperator(op, b1, b2))
-            if is_self_or_field(b1, deep=True):
-                noop = False
-                x = b1
-                b1 = a2
-                a2 = a1
-                a1 = x
-                # it is now possible to have redundancy on the LHS
-                a = _simplify_binary_operator(HplBinaryOperator(op, a1, a2))
-                # it is now possible to have two literals on the RHS
-                b = _simplify_binary_operator(HplBinaryOperator(op, b1, b2))
-        elif left:
-            if isinstance(a.operand2, HplLiteral):
-                noop = False
-                x = b
-                b = a.operand2
-                # it is now possible to have redundancy on the LHS
-                a = _simplify_binary_operator(HplBinaryOperator(op, a.operand1, x))
-        elif right:
-            if is_self_or_field(b.operand1, deep=True):
-                noop = False
-                x = a
-                a = b.operand1
-                # it is now possible to have redundancy on the RHS
-                b = _simplify_binary_operator(HplBinaryOperator(op, x, b.operand2))
-
-    return expr if noop else HplBinaryOperator(op, a, b)
+        return _canonical_lhs(HplBinaryOperator(op, a, b))
 
 
 def _canonical_lhs(expr: HplBinaryOperator) -> HplBinaryOperator:
@@ -216,19 +152,53 @@ def _canonical_lhs(expr: HplBinaryOperator) -> HplBinaryOperator:
     a: HplExpression = expr.operand1
     b: HplExpression = expr.operand2
 
-    # 1. self-references
-    if is_self_or_field(a):
+    if not op.is_comparison:
         return expr
-    if is_self_or_field(b):
+
+    aIsRef: bool = _is_any_reference_type(a)
+    bIsRef: bool = _is_any_reference_type(b)
+
+    if aIsRef and not bIsRef:
+        return expr
+    if bIsRef and not aIsRef:
         return HplBinaryOperator(inverse_operator(op), b, a)
+
+    # 1. self-references
     if a.contains_self_reference():
-        if op.is_arithmetic or op.is_comparison:
-            changed = False
-            while isinstance(a, HplUnaryOperator):
-                b = HplUnaryOperator(a.operator, b)
-                a = a.operand
-                op = inverse_operator(op)
-                changed = True
-            if changed:
-                return _canonical_lhs(HplBinaryOperator(op, a, b))
+        return _push_transforms_to_rhs(expr)
+    if b.contains_self_reference():
+        expr = HplBinaryOperator(inverse_operator(op), b, a)
+        return _push_transforms_to_rhs(expr)
+    # 2. external variables
+    if a.external_references():
+        return _push_transforms_to_rhs(expr)
+    if b.external_references():
+        expr = HplBinaryOperator(inverse_operator(op), b, a)
+        return _push_transforms_to_rhs(expr)
     return expr
+
+
+def _push_transforms_to_rhs(expr: HplBinaryOperator) -> HplBinaryOperator:
+    op: BinaryOperatorDefinition = expr.operator
+    a: HplExpression = expr.operand1
+    b: HplExpression = expr.operand2
+    changed = False
+    while a.is_operator:
+        if isinstance(a, HplUnaryOperator):
+            b = HplUnaryOperator(a.operator, b)
+            a = a.operand
+            op = inverse_operator(op)
+            changed = True
+        else:
+            break
+    return HplBinaryOperator(op, a, b) if changed else expr
+
+
+def _is_any_reference_type(expr: HplExpression) -> bool:
+    if expr.is_value:
+        assert isinstance(expr, HplValue)
+        return expr.is_reference
+    if expr.is_accessor:
+        assert isinstance(expr, HplDataAccess)
+        return True
+    return False
