@@ -21,7 +21,7 @@ from hpl.ast import (
 from hpl.rewrite import is_true
 
 from hplpbt.errors import ContradictionError
-from hplpbt.strategies._rewrite import split_or
+from hplpbt.strategies._rewrite import canonical_form, split_or
 from hplpbt.strategies.ast import (
     BinaryOperator,
     ConstantValue,
@@ -50,22 +50,22 @@ class DataVariable:
     base_strategy: DataStrategy
     branches: List[DataStrategy] = field(factory=list)
 
-    def eq(self, value: HplValue):
+    def eq(self, expr: HplExpression):
         pass
 
-    def neq(self, value: HplValue):
+    def neq(self, expr: HplExpression):
         pass
 
-    def lt(self, value: HplValue):
+    def lt(self, expr: HplExpression):
         pass
 
-    def lte(self, value: HplValue):
+    def lte(self, expr: HplExpression):
         pass
 
-    def gt(self, value: HplValue):
+    def gt(self, expr: HplExpression):
         pass
 
-    def gte(self, value: HplValue):
+    def gte(self, expr: HplExpression):
         pass
 
 
@@ -149,30 +149,28 @@ class DataGenerator:
         pass
 
     def _assume_binary_operator(self, expr: HplBinaryOperator):
+        assert not operator.is_arithmetic
+        expr = canonical_form(expr)
         a = expr.operand1
         b = expr.operand2
         operator = expr.operator
-        assert not operator.is_arithmetic
-        # if isinstance(a, HplDataAccess):
-        # elif isinstance(a, HplValue):
         if not isinstance(a, HplVarReference):
-            if not isinstance(b, HplVarReference):
-                return
-        x = expression_from_hpl(expr.operand2)
+            return
+        var = self.variables[a.name]
         if operator.is_inclusion:
             pass
         elif operator.is_equality:
-            self.eq(x)
+            var.eq(b)
         elif operator.is_inequality:
-            self.neq(x)
+            var.neq(b)
         elif operator.is_less_than:
-            self.lt(x)
+            var.lt(b)
         elif operator.is_less_than_eq:
-            self.lte(x)
+            var.lte(b)
         elif operator.is_greater_than:
-            self.gt(x)
+            var.gt(b)
         elif operator.is_greater_than_eq:
-            self.gte(x)
+            var.gte(b)
         elif operator.is_and:
             self.assume(expr.operand1)
             self.assume(expr.operand2)
