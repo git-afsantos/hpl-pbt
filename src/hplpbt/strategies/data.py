@@ -21,6 +21,7 @@ from hpl.ast import (
 from hpl.rewrite import is_true
 
 from hplpbt.errors import ContradictionError
+from hplpbt.strategies._rewrite import split_or
 from hplpbt.strategies.ast import (
     BinaryOperator,
     ConstantValue,
