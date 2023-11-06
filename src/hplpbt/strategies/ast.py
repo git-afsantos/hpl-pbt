@@ -21,6 +21,7 @@ from hpl.ast import (
     HplQuantifier,
     HplUnaryOperator,
 )
+from hplrv.gen import TemplateRenderer
 from typeguard import check_type, typechecked
 
 ################################################################################
@@ -500,6 +501,44 @@ def convert_to_int(expr: Expression) -> Expression:
     if expr.is_function_call:
         if expr.function == 'len':
             return expr
+    if expr.is_unary_operator:
+        assert isinstance(expr, UnaryOperator)
+        if expr.token == '-':
+            if expr.operand.is_literal:
+                assert isinstance(expr.operand, Literal)
+                return convert_to_int(Literal(-expr.operand.value))
+        if expr.token == '+':
+            if expr.operand.is_literal:
+                assert isinstance(expr.operand, Literal)
+                return convert_to_int(Literal(+expr.operand.value))
+        if expr.token == '~':
+            if expr.operand.is_literal:
+                assert isinstance(expr.operand, Literal)
+                return convert_to_int(Literal(~expr.operand.value))
+    if expr.is_binary_operator:
+        assert isinstance(expr, BinaryOperator)
+        if expr.operand1.is_literal and expr.operand2.is_literal:
+            assert isinstance(expr.operand1, Literal)
+            assert isinstance(expr.operand2, Literal)
+            f = lambda x: convert_to_int(Literal(x))
+            if expr.token == '+':
+                return f(expr.operand1.value + expr.operand2.value)
+            if expr.token == '-':
+                return f(expr.operand1.value - expr.operand2.value)
+            if expr.token == '*':
+                return f(expr.operand1.value * expr.operand2.value)
+            if expr.token == '/':
+                return f(expr.operand1.value / expr.operand2.value)
+            if expr.token == '%':
+                return f(expr.operand1.value % expr.operand2.value)
+            if expr.token == '**':
+                return f(expr.operand1.value ** expr.operand2.value)
+            if expr.token == '&':
+                return f(expr.operand1.value & expr.operand2.value)
+            if expr.token == '|':
+                return f(expr.operand1.value | expr.operand2.value)
+            if expr.token == '^':
+                return f(expr.operand1.value ^ expr.operand2.value)
     return FunctionCall('int', (expr,))
 
 
@@ -1115,4 +1154,8 @@ class Assumption(Statement):
         return self.expression.external_references()
 
     def __str__(self) -> str:
-        return f"assume('{self.expression}')"
+        r = TemplateRenderer.from_pkg_data()
+        data = {'expression': self.expression, 'message': 'msg'}
+        expression = r.render_template('py/expression.py.jinja', data, strip=True)
+        expression = expression.replace('v_', '')
+        return f'assume{expression}' if expression.startswith('(') else f'assume({expression})'
