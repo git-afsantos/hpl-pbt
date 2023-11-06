@@ -68,6 +68,39 @@ class DataVariable:
         pass
 
 
+# x + y + z < 100
+# x > 10
+# y = x + 20
+
+# x, y, z = Symbol()
+# s1 = Sum([x, y, z], max=100, exclude_max=True)
+# x.min = 10
+# x.exclude_min = True
+# y = Sum([x, 20])
+# s1 = Sum([Product([x, 2]), z, 20], max=100, exclude_max=True)
+# s1 = Sum([Product([x, 2]), z], max=80, exclude_max=True)
+# z.max = Sum([80, -2x])
+
+# x > 10
+# y = x + 20
+# z < 80 - 2x
+
+# class Expression
+#   min_value, max_value: Expression
+#   exclude_min, exclude_max: bool
+#   negative: bool
+#   exponent: Expression
+
+# class Symbol(Expression)
+#   name: str
+
+# class Sum(Expression)
+#   parts: List[Product | Symbol | Literal]
+
+# class Product(Expression)
+#   factors: List[Sum | Symbol | Literal]
+
+
 @define
 class DataGenerator:
     variables: Mapping[str, DataVariable]
@@ -119,6 +152,8 @@ class DataGenerator:
         b = expr.operand2
         operator = expr.operator
         assert not operator.is_arithmetic
+        # if isinstance(a, HplDataAccess):
+        # elif isinstance(a, HplValue):
         if not isinstance(a, HplVarReference):
             if not isinstance(b, HplVarReference):
                 return
