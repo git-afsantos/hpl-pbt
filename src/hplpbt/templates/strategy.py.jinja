@@ -1,0 +1,33 @@
+{# SPDX-License-Identifier: MIT #}
+{# Copyright © 2023 André Santos #}
+
+{##############################################################################}
+{# RENDERING MACROS #}
+{##############################################################################}
+
+
+{# strategy: MessageStrategy #}
+{% macro msg_strategy(strategy) -%}
+@composite
+def {{ strategy.name }}(draw) -> {{ strategy.return_type }}:
+{% for statement in strategy.body %}
+{{ _statement(statement)|indent(4, first=true) }}
+{% endfor %}
+{% set statement = strategy.body[-1] %}
+{% if statement.is_assignment and statement.variable == strategy.return_variable %}
+    return {{ statement.expression }}
+{% else %}
+    return {{ strategy.return_variable }}
+{% endif %}
+{% endmacro %}
+
+
+{##############################################################################}
+{# HELPER MACROS #}
+{##############################################################################}
+
+
+{# statement: Statement #}
+{% macro _statement(statement) -%}
+{{ statement }}
+{%- endmacro %}

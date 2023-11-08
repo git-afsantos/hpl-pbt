@@ -1,0 +1,41 @@
+{# SPDX-License-Identifier: MIT #}
+{# Copyright © 2023 André Santos #}
+
+{# input: strategies: Iterable[MessageStrategy] #}
+
+{##############################################################################}
+{# IMPORTS #}
+{##############################################################################}
+
+{% import 'strategy.py.jinja' as S %}
+
+{##############################################################################}
+{# RENDERED CODE #}
+{##############################################################################}
+
+# SPDX-License-Identifier: MIT
+# Copyright © 2023 André Santos
+
+###############################################################################
+# Imports
+###############################################################################
+
+from hypothesis import assume, given
+from hypothesis.strategies import (
+    booleans,
+    composite,
+    floats,
+    integers,
+    just,
+    sampled_from,
+    text,
+)
+
+###############################################################################
+# Data Strategies
+###############################################################################
+
+{% for strategy in strategies %}
+{{ S.msg_strategy(strategy) }}
+
+{% endfor %}

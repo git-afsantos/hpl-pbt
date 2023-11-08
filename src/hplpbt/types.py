@@ -97,7 +97,7 @@ class MessageType:
     @typechecked
     def from_data(cls, name: str, data: Mapping[str, Any]) -> 'MessageType':
         dependency = check_type(data.get('import', ''), str).split('.', maxsplit=1)
-        package = dependency[0]
+        package = dependency[0] or 'data'
         class_name = dependency[1] if len(dependency) > 1 else ''
         arg_data = check_type(data.get('args', ()), Iterable[str])
         params = list(map(ParameterDefinition.from_type_string, arg_data))
