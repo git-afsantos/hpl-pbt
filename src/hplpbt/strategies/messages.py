@@ -284,13 +284,13 @@ class MessageStrategyBuilder:
 class SingleMessageStrategyBuilder:
     # the message type to build instances of
     message_type: MessageType
-    # arguments to provide to the message type constructor
-    positional_arguments: List[Tuple[str, MessageStrategyArgument]] = field(factory=list)
-    keyword_arguments: List[Tuple[str, MessageStrategyArgument]] = field(factory=list)
-    # assumptions about the arguments to the message type constructor
-    preconditions: List[HplExpression] = field(factory=list)
     # name of the variable containing the constructed message
     message_variable: str = 'msg'
+    # arguments to provide to the message type constructor
+    _positional_arguments: List[Tuple[str, MessageStrategyArgument]] = field(factory=list)
+    _keyword_arguments: List[Tuple[str, MessageStrategyArgument]] = field(factory=list)
+    # assumptions about the arguments to the message type constructor
+    _preconditions: List[HplExpression] = field(factory=list)
 
     def build(self) -> MessageStrategy:
         # 1. Iterate over message type parameters and create local variables
@@ -345,22 +345,22 @@ class SingleMessageStrategyBuilder:
     def _create_strategy_arguments(self) -> Dict[str, str]:
         # returns a reference map, mapping user-input names to generated names
         # resets/rebuilds positional and keyword argument lists
-        self.positional_arguments.clear()
-        self.keyword_arguments.clear()
+        self._positional_arguments.clear()
+        self._keyword_arguments.clear()
         refmap = {}
         for i, param in enumerate(self.message_type.positional_parameters):
             variable = f'arg{i}'
             original_name = f'_{i}'
             gen = self._param_data_generator(param)
             arg = MessageStrategyArgument(variable, original_name, gen)
-            self.positional_arguments.append((variable, arg))
+            self._positional_arguments.append((variable, arg))
             refmap[original_name] = variable
         i = len(refmap)
         for name, param in self.message_type.keyword_parameters.items():
             variable = f'arg{i}'
             gen = self._param_data_generator(param)
             arg = MessageStrategyArgument(variable, original_name, gen)
-            self.keyword_arguments.append((variable, arg))
+            self._keyword_arguments.append((variable, arg))
             assert name not in refmap
             refmap[name] = variable
             i += 1
@@ -378,7 +378,7 @@ class SingleMessageStrategyBuilder:
 
     def _preprocess_preconditions(self, refmap: Mapping[str, str]):
         pre = self.message_type.precondition
-        self.preconditions.clear()
+        self._preconditions.clear()
         if pre.is_vacuous:
             assert pre.is_true
             return
@@ -390,18 +390,18 @@ class SingleMessageStrategyBuilder:
                 var = refmap[alias]
                 phi = phi.replace_var_reference(alias, HplVarReference(f'@{var}'))
             # store only the final form of the expression
-            self.preconditions.append(phi)
+            self._preconditions.append(phi)
 
     def _refine_data_generators(self):
         # create a mapping of each argument for easier access
         argmap: Dict[str, MessageStrategyArgument] = {}
-        for name, arg in self.positional_arguments:
+        for name, arg in self._positional_arguments:
             argmap[name] = arg
-        for name, arg in self.keyword_arguments:
+        for name, arg in self._keyword_arguments:
             argmap[name] = arg
 
         # iterate over all preconditions
-        for phi in self.preconditions:
+        for phi in self._preconditions:
             refs = phi.external_references()
             # ignore preconditions that do not have references to arguments
             # or preconditions that have references to unknown variables
@@ -416,14 +416,14 @@ class SingleMessageStrategyBuilder:
     def _generate_message_from_type_params(self) -> List[Statement]:
         body = []
         args = []
-        for name, arg in self.positional_arguments:
+        for name, arg in self._positional_arguments:
             body.extend(self._generate_argument(name, arg))
             args.append(Reference(name))
         kwargs = []
-        for name, arg in self.keyword_arguments:
+        for name, arg in self._keyword_arguments:
             body.extend(self._generate_argument(name, arg))
             kwargs.append((name, Reference(name)))
-        for phi in self.preconditions:
+        for phi in self._preconditions:
             body.append(Assumption(phi))
 
         body = sort_statements(body)
