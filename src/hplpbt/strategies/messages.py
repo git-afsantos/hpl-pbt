@@ -246,6 +246,19 @@ class MessageStrategyBuilder:
             return self._build_strategies(event)
         return set(strat for msg in event.simple_events() for strat in self._build_strategies(msg))
 
+    def build_pack_from_simple_event(
+        self,
+        event: HplSimpleEvent,
+    ) -> Tuple[MessageStrategy, Set[MessageStrategy]]:
+        if event.name not in self.input_channels:
+            raise ValueError(f'unknown input channel: {event.name}')
+        type_name: str = self.input_channels[event.name]
+        type_def: MessageType = self.type_defs[type_name]
+        deps = self._strategies_for_type(type_def)
+        main = self._strategy_for_type(type_def)
+        deps.remove(main)
+        return main, deps
+
     def _build_strategies(self, event: HplSimpleEvent) -> Set[MessageStrategy]:
         if event.name not in self.input_channels:
             return set()
