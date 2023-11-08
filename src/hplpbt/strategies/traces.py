@@ -5,14 +5,21 @@
 # Imports
 ###############################################################################
 
-from typing import Iterable, List, Mapping, Optional, Set, Union
+from typing import Final, Iterable, List, Mapping, Optional, Set, Union
 
 from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
-from hpl.ast import HplProperty, HplSpecification
+from hpl.ast import HplEvent, HplProperty, HplSimpleEvent, HplSpecification
+from hplpbt.strategies.messages import MessageStrategy, MessageStrategyBuilder
 from typeguard import typechecked
 
 from hplpbt.types import MessageType
+
+################################################################################
+# Constants
+################################################################################
+
+INF: Final[float] = float('inf')
 
 ################################################################################
 # Internal Structures: Traces and Segments
@@ -23,7 +30,7 @@ from hplpbt.types import MessageType
 class TraceSegment:
     delay: float
     timeout: float
-    mandatory: str
+    mandatory: Iterable[str] = field(factory=tuple, converter=tuple)
     spam: Iterable[str] = field(factory=tuple, converter=tuple)
 
 
@@ -107,37 +114,51 @@ class TraceStrategyBuilder:
     def build_from_property(self, hpl_property: HplProperty) -> TraceStrategy:
         segments: List[TraceSegment] = []
 
+        # first segment: activator
         event = hpl_property.scope.activator
         if event is not None:
-            pass  # add segment
-        event = hpl_property.scope.terminator
-        if event is not None:
-            pass  # add segment
+            seg = self.publish_segment(event)
+            segments.append(seg)
 
+        # main segments: pattern-based events
         if hpl_property.pattern.is_absence:
             pass  # spam segment
-
         elif hpl_property.pattern.is_existence:
             pass  # spam segment
-
         elif hpl_property.pattern.is_requirement:
             event = hpl_property.pattern.trigger
             assert event is not None
             # spam avoid trigger segment
-
         elif hpl_property.pattern.is_response:
             event = hpl_property.pattern.trigger
             assert event is not None
             # trigger segment
             # spam segment
-
         elif hpl_property.pattern.is_prevention:
             event = hpl_property.pattern.trigger
             assert event is not None
             # trigger segment
             # spam segment
-
         else:
             raise TypeError(f'unknown HPL property type: {hpl_property!r}')
 
+        # last segment: terminator
+        event = hpl_property.scope.terminator
+        if event is not None:
+            seg = self.publish_segment(event)
+            segments.append(seg)
+
         return TraceStrategy(segments=segments)
+
+    def publish_segment(self, event: HplEvent) -> TraceSegment:
+        builder = MessageStrategyBuilder(
+            self.input_channels,
+            self.type_defs,
+            assumptions=self.assumptions
+        )
+        mandatory: Set[str] = set()
+        for ev in event.simple_events():
+            assert isinstance(ev, HplSimpleEvent)
+            strategy, _helpers = builder.build_pack_from_simple_event(ev)
+            mandatory.add(strategy.name)
+        return TraceSegment(0, INF, mandatory=mandatory)
