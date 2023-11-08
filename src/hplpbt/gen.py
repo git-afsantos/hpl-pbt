@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Container, Final, Iterable, List, Mapping, Optional, Union
+from typing import Any, Container, Final, Iterable, List, Mapping, Optional, Tuple, Union
 
 from pathlib import Path
 
@@ -16,7 +16,7 @@ from hpl.rewrite import canonical_form
 from jinja2 import Environment, PackageLoader
 
 from hplpbt.logic import split_assumptions
-from hplpbt.strategies.messages import strategies_from_spec
+from hplpbt.strategies.messages import MessageStrategy, strategies_from_spec
 from hplpbt.types import BuiltinParameterType, type_map_from_data
 
 ###############################################################################
@@ -81,7 +81,7 @@ def generate_tests(
     # parts.extend(map(str, msg_strategies))
     # return '\n'.join(parts)
     r = TemplateRenderer.from_pkg_data()
-    data = {'strategies': msg_strategies}
+    data = {'strategies': msg_strategies, 'imports': _import_list(msg_strategies)}
     return r.render_template('test-script.py.jinja', data)
 
 
@@ -128,6 +128,21 @@ class TemplateRenderer:
 def _parsed_properties(properties: Iterable[Union[str, HplProperty]]) -> List[HplProperty]:
     parser = property_parser()
     return [p if isinstance(p, HplProperty) else parser.parse(p) for p in properties]
+
+
+def _import_list(strategies: Iterable[MessageStrategy]) -> List[Tuple[str, List[str]]]:
+    imports: Mapping[str, List[str]] = {}
+    for strategy in strategies:
+        classes = imports.get(strategy.package)
+        if classes is None:
+            classes = [strategy.class_name]
+            imports[strategy.package] = classes
+        else:
+            classes.append(strategy.class_name)
+    import_list: List[Tuple[str, List[str]]] = []
+    for package in sorted(imports.keys()):
+        import_list.append((package, sorted(imports[package])))
+    return import_list
 
 
 ###############################################################################

@@ -1,6 +1,7 @@
 {# SPDX-License-Identifier: MIT #}
 {# Copyright © 2023 André Santos #}
 
+{# input: imports: Iterable[Tuple[str, Iterable[str]]] #}
 {# input: strategies: Iterable[MessageStrategy] #}
 
 {##############################################################################}
@@ -30,6 +31,11 @@ from hypothesis.strategies import (
     sampled_from,
     text,
 )
+
+{# from {{ pkg }} import {{ names|join(', ') }} #}
+{% for pkg, names in imports %}
+import {{ pkg }}
+{% endfor %}
 
 ###############################################################################
 # Data Strategies

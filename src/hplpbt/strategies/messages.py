@@ -78,7 +78,8 @@ class MessageStrategy:
     3. initialize dependent fields of the message itself and run assumptions
     """
     name: str
-    return_type: str
+    package: str
+    class_name: str
     return_variable: str
     arguments: Iterable[StrategyArgument] = field(factory=tuple, converter=tuple)
     body: Iterable[Statement] = field(factory=tuple, converter=tuple)
@@ -92,6 +93,10 @@ class MessageStrategy:
                 if assignment.variable == self.return_variable:
                     return
         raise ValueError(f'variable {self.return_variable} is undefined in {body!r}')
+
+    @property
+    def return_type(self) -> str:
+        return self.class_name if not self.package else f'{self.package}.{self.class_name}'
 
     def __str__(self) -> str:
         parts = ['@composite', f'def {self.name}(draw) -> {self.return_type}:']
@@ -328,9 +333,14 @@ class SingleMessageStrategyBuilder:
         #    according to their references and dependencies.
 
         # 10. Return the fully constructed message strategy.
-        ret_type: str = self.message_type.qualified_name
         function_name: str = f'gen_{self.message_type.name}'
-        return MessageStrategy(function_name, ret_type, self.message_variable, body=body)
+        return MessageStrategy(
+            function_name,
+            self.message_type.package,
+            self.message_type.class_name,
+            self.message_variable,
+            body=body,
+        )
 
     def _create_strategy_arguments(self) -> Dict[str, str]:
         # returns a reference map, mapping user-input names to generated names
