@@ -24,14 +24,14 @@
 ###############################################################################
 
 # Assumptions
-{% for property in assumptions %}
+{% for property in assumptions|default(()) %}
 # {{ property }}
 {% else %}
 # (none)
 {% endfor %}
 
 # Behaviour
-{% for property in behaviour %}
+{% for property in behaviour|default(()) %}
 # {{ property }}
 {% else %}
 # (none)
