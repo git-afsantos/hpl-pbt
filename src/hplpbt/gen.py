@@ -9,11 +9,10 @@ from typing import Any, Container, Final, Iterable, List, Mapping, Optional, Tup
 
 from pathlib import Path
 
-from attrs import frozen
 from hpl.ast import HplProperty, HplSpecification
 from hpl.parser import property_parser, specification_parser
 from hpl.rewrite import canonical_form
-from jinja2 import Environment, PackageLoader
+from hplrv.gen import TemplateRenderer
 
 from hplpbt.logic import split_assumptions
 from hplpbt.strategies.messages import MessageStrategy, strategies_from_spec
@@ -73,56 +72,19 @@ def generate_tests(
     assumptions, behaviour = split_assumptions(canonical_properties, input_channels)
     type_defs = type_map_from_data(msg_types[MSG_TYPES_KEY_TYPEDEFS])
     msg_strategies = strategies_from_spec(behaviour, input_channels, type_defs)
-    # parts = ['# assumptions']
-    # parts.extend(map(repr, map(str, assumptions)))
-    # parts.append('# behaviour')
-    # parts.extend(map(repr, map(str, behaviour)))
-    # parts.append('# strategies')
-    # parts.extend(map(str, msg_strategies))
-    # return '\n'.join(parts)
-    r = TemplateRenderer.from_pkg_data()
-    data = {'strategies': msg_strategies, 'imports': _import_list(msg_strategies)}
+    r = TemplateRenderer.from_pkg_data(pkg='hplpbt', template_dir='templates')
+    data = {
+        'strategies': msg_strategies,
+        'imports': _import_list(msg_strategies),
+        'assumptions': assumptions,
+        'behaviour': behaviour,
+    }
     return r.render_template('test-script.py.jinja', data)
 
 
 ###############################################################################
 # Helper Functions
 ###############################################################################
-
-
-@frozen
-class TemplateRenderer:
-    jinja_env: Environment
-
-    @classmethod
-    def from_pkg_data(
-        cls,
-        pkg: str = 'hplpbt',
-        template_dir: str = 'templates'
-    ) -> 'TemplateRenderer':
-        return cls(Environment(
-            loader=PackageLoader(pkg, template_dir),
-            line_statement_prefix=None,
-            line_comment_prefix=None,
-            trim_blocks=True,
-            lstrip_blocks=True,
-            autoescape=False,
-        ))
-
-    def render_template(
-        self,
-        template_file: str,
-        data: Mapping[str, Any],
-        strip: bool = True,
-        encoding: Optional[str] = None
-    ) -> str:
-        template = self.jinja_env.get_template(template_file)
-        text = template.render(**data)
-        if strip:
-            text = text.strip()
-        if encoding is None:
-            return text
-        return text.encode(encoding)
 
 
 def _parsed_properties(properties: Iterable[Union[str, HplProperty]]) -> List[HplProperty]:

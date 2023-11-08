@@ -3,6 +3,8 @@
 
 {# input: imports: Iterable[Tuple[str, Iterable[str]]] #}
 {# input: strategies: Iterable[MessageStrategy] #}
+{# input: assumptions: Iterable[HplProperty] #}
+{# input: behaviour: Iterable[HplProperty] #}
 
 {##############################################################################}
 {# IMPORTS #}
@@ -16,6 +18,25 @@
 
 # SPDX-License-Identifier: MIT
 # Copyright © 2023 André Santos
+
+###############################################################################
+# Properties
+###############################################################################
+
+# Assumptions
+{% for property in assumptions %}
+# {{ property }}
+{% else %}
+# (none)
+{% endfor %}
+
+# Behaviour
+{% for property in behaviour %}
+# {{ property }}
+{% else %}
+# (none)
+{% endfor %}
+
 
 ###############################################################################
 # Imports
