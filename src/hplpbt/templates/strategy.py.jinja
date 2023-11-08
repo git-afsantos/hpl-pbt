@@ -10,13 +10,14 @@
 {% macro msg_strategy(strategy) -%}
 @composite
 def {{ strategy.name }}(draw) -> {{ strategy.return_type }}:
-{% for statement in strategy.body %}
+{% for statement in strategy.body[:-1] %}
 {{ _statement(statement)|indent(4, first=true) }}
 {% endfor %}
 {% set statement = strategy.body[-1] %}
 {% if statement.is_assignment and statement.variable == strategy.return_variable %}
     return {{ statement.expression }}
 {% else %}
+{{ _statement(statement)|indent(4, first=true) }}
     return {{ strategy.return_variable }}
 {% endif %}
 {% endmacro %}
