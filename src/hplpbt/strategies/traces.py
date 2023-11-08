@@ -10,7 +10,7 @@ from typing import Final, Iterable, List, Mapping, Optional, Set, Union
 from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import HplEvent, HplProperty, HplSimpleEvent, HplSpecification
-from hplpbt.strategies.messages import MessageStrategy, MessageStrategyBuilder
+from hplpbt.strategies.messages import MessageStrategyBuilder
 from typeguard import typechecked
 
 from hplpbt.types import MessageType
