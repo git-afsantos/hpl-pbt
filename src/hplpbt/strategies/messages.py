@@ -80,9 +80,9 @@ class MessageStrategy:
     name: str
     package: str
     class_name: str
-    return_variable: str
+    return_variable: str = field(eq=False)
     arguments: Iterable[StrategyArgument] = field(factory=tuple, converter=tuple)
-    body: Iterable[Statement] = field(factory=tuple, converter=tuple)
+    body: Iterable[Statement] = field(factory=tuple, converter=tuple, eq=False)
 
     @body.validator
     def _check_body(self, _attribute, value: Iterable[Statement]):

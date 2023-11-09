@@ -10,7 +10,7 @@ from typing import Final, Iterable, List, Mapping, Optional, Set, Union
 from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import HplEvent, HplProperty, HplSimpleEvent, HplSpecification
-from hplpbt.strategies.messages import MessageStrategyBuilder
+from hplpbt.strategies.messages import MessageStrategy, MessageStrategyBuilder
 from typeguard import typechecked
 
 from hplpbt.types import MessageType
@@ -30,8 +30,9 @@ INF: Final[float] = float('inf')
 class TraceSegment:
     delay: float
     timeout: float
-    mandatory: Iterable[str] = field(factory=tuple, converter=tuple)
-    spam: Iterable[str] = field(factory=tuple, converter=tuple)
+    mandatory: Iterable[MessageStrategy] = field(factory=tuple, converter=tuple)
+    spam: Iterable[MessageStrategy] = field(factory=tuple, converter=tuple)
+    helpers: Iterable[MessageStrategy] = field(factory=tuple, converter=tuple)
 
 
 @frozen
@@ -156,9 +157,11 @@ class TraceStrategyBuilder:
             self.type_defs,
             assumptions=self.assumptions
         )
-        mandatory: Set[str] = set()
+        mandatory: Set[MessageStrategy] = set()
+        helpers: Set[MessageStrategy] = set()
         for ev in event.simple_events():
             assert isinstance(ev, HplSimpleEvent)
-            strategy, _helpers = builder.build_pack_from_simple_event(ev)
-            mandatory.add(strategy.name)
-        return TraceSegment(0, INF, mandatory=mandatory)
+            strategy, dependencies = builder.build_pack_from_simple_event(ev)
+            mandatory.add(strategy)
+            helpers.update(dependencies)
+        return TraceSegment(0, INF, mandatory=mandatory, helpers=helpers)
