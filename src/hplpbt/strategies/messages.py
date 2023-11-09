@@ -8,19 +8,24 @@
 from typing import Callable, Dict, Final, Iterable, List, Mapping, Optional, Set, Tuple, Union
 
 from attrs import field, frozen
-from attrs.validators import deep_iterable, deep_mapping, instance_of
+from attrs.validators import deep_mapping, instance_of
 from hpl.ast import (
-    # HplArrayAccess,
     HplEvent,
     HplExpression,
-    # HplFieldAccess,
+    HplLiteral,
     HplProperty,
     HplSimpleEvent,
     HplSpecification,
     HplVarReference,
 )
 from hpl.rewrite import simplify, split_and
-from hplpbt.strategies.data import BasicDataFieldGenerator, BooleanFieldGenerator, NumberFieldGenerator, StringFieldGenerator
+from hplpbt.errors import ContradictionError
+from hplpbt.strategies.data import (
+    BasicDataFieldGenerator,
+    BooleanFieldGenerator,
+    NumberFieldGenerator,
+    StringFieldGenerator,
+)
 # from hpl.types import TypeToken
 from typeguard import check_type, typechecked
 
@@ -38,6 +43,8 @@ from hplpbt.types import MessageType, ParameterDefinition
 ################################################################################
 # Constants
 ################################################################################
+
+TRUE: Final[HplLiteral] = HplLiteral.true()
 
 DATA_GENERATORS: Final[Mapping[str, Callable[[], BasicDataFieldGenerator]]] = {
     'bool': BooleanFieldGenerator.any_bool,
@@ -130,10 +137,8 @@ def strategies_from_spec(
     spec: Union[HplSpecification, Iterable[HplProperty]],
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, MessageType],
-    assumptions: Optional[Iterable[HplProperty]] = None,
 ) -> Set[MessageStrategy]:
-    assumptions = assumptions if assumptions is not None else []
-    builder = MessageStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
+    builder = MessageStrategyBuilder(input_channels, type_defs)
     return builder.build_from_spec(spec)
 
 
@@ -142,10 +147,8 @@ def strategies_from_property(
     hpl_property: HplProperty,
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, MessageType],
-    assumptions: Optional[Iterable[HplProperty]] = None,
 ) -> Set[MessageStrategy]:
-    assumptions = assumptions if assumptions is not None else []
-    builder = MessageStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
+    builder = MessageStrategyBuilder(input_channels, type_defs)
     return builder.build_from_property(hpl_property)
 
 
@@ -154,10 +157,8 @@ def strategies_from_event(
     event: HplEvent,
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, MessageType],
-    assumptions: Optional[Iterable[HplProperty]] = None,
 ) -> Set[MessageStrategy]:
-    assumptions = assumptions if assumptions is not None else []
-    builder = MessageStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
+    builder = MessageStrategyBuilder(input_channels, type_defs)
     return builder.build_from_event(event)
 
 
@@ -181,10 +182,6 @@ class MessageStrategyBuilder:
             instance_of(MessageType),
             mapping_validator=instance_of(Mapping),
         )
-    )
-    assumptions: Iterable[HplProperty] = field(
-        factory=list,
-        validator=deep_iterable(instance_of(HplProperty), iterable_validator=instance_of(Iterable))
     )
     _cache: Mapping[str, MessageStrategy] = field(factory=dict, init=False, eq=False, repr=False)
 
@@ -246,6 +243,13 @@ class MessageStrategyBuilder:
             return self._build_strategies(event)
         return set(strat for msg in event.simple_events() for strat in self._build_strategies(msg))
 
+    def _build_strategies(self, event: HplSimpleEvent) -> Set[MessageStrategy]:
+        if event.name not in self.input_channels:
+            return set()
+        type_name: str = self.input_channels[event.name]
+        type_def: MessageType = self.type_defs[type_name]
+        return self._strategies_for_type(type_def)
+
     def build_pack_from_simple_event(
         self,
         event: HplSimpleEvent,
@@ -253,18 +257,17 @@ class MessageStrategyBuilder:
         if event.name not in self.input_channels:
             raise ValueError(f'unknown input channel: {event.name}')
         type_name: str = self.input_channels[event.name]
+        return self.build_pack_for_type_name(type_name)
+
+    def build_pack_for_type_name(
+        self,
+        type_name: str,
+    ) -> Tuple[MessageStrategy, Set[MessageStrategy]]:
         type_def: MessageType = self.type_defs[type_name]
         deps = self._strategies_for_type(type_def)
         main = self._strategy_for_type(type_def)
         deps.remove(main)
         return main, deps
-
-    def _build_strategies(self, event: HplSimpleEvent) -> Set[MessageStrategy]:
-        if event.name not in self.input_channels:
-            return set()
-        type_name: str = self.input_channels[event.name]
-        type_def: MessageType = self.type_defs[type_name]
-        return self._strategies_for_type(type_def)
 
     def _strategies_for_type(
         self,
@@ -390,13 +393,13 @@ class SingleMessageStrategyBuilder:
         return gen
 
     def _preprocess_preconditions(self, refmap: Mapping[str, str]):
-        pre = self.message_type.precondition
         self._preconditions.clear()
-        if pre.is_vacuous:
-            assert pre.is_true
-            return
+        pre = simplify(self.message_type.precondition)
+        if pre.is_vacuous and not pre.is_true:
+            name: str = self.message_type.name
+            raise ContradictionError(f'unsatisfiable precondition for {name}')
         # break the first level of conjunctions
-        conditions = split_and(simplify(pre.condition))
+        conditions = split_and(pre.condition)
         # replace references to user-input variables
         for phi in conditions:
             for alias in phi.external_references():
