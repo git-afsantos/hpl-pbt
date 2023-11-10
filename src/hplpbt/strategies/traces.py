@@ -12,10 +12,8 @@ from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import (
     HplEvent,
     HplExpression,
-    HplPattern,
     HplPredicate,
     HplProperty,
-    HplScope,
     HplSimpleEvent,
     HplSpecification,
 )
