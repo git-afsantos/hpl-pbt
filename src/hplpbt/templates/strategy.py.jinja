@@ -23,6 +23,23 @@ def {{ strategy.name }}(draw) -> {{ strategy.return_type }}:
 {% endmacro %}
 
 
+{# strategy: MessageStrategy #}
+{% macro trace_strategy(strategy) -%}
+{% set return_type = 'RT' ~ strategy.name %}
+{{ return_type }} = {{ strategy.get_return_type() }}
+
+
+@composite
+def gen_{{ strategy.name }}() -> List[{{ return_type }}]:
+    # HPL property:
+    # {{ strategy.hpl_property }}
+{% for segment in strategy.segments %}
+    pass  # segment {{ loop.index }}
+{% endfor %}
+    return []
+{% endmacro %}
+
+
 {##############################################################################}
 {# HELPER MACROS #}
 {##############################################################################}

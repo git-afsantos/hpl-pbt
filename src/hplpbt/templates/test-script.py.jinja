@@ -76,17 +76,6 @@ import {{ pkg }}
 ###############################################################################
 
 {% for strategy in trace_strategies|sort(attribute='name') %}
-RT{{ loop.index }} = {{ strategy.get_return_type() }}
-
-
-@composite
-def gen_{{ strategy.name }}() -> List[RT{{ loop.index }}]:
-    # HPL property:
-    # {{ strategy.hpl_property }}
-{% for segment in strategy.segments %}
-    pass  # segment {{ loop.index }}
-{% endfor %}
-    return []
-
+{{ S.trace_strategy(strategy) }}
 
 {% endfor %}
