@@ -215,12 +215,12 @@ class TraceStrategyBuilder:
                 phi = phi.join(ev.predicate.negate())
             anti_triggers[type_name] = phi
         # FIXME must do something with general trace assumptions
-        assumptions = list(self.assumptions)
-        for name, phi in anti_triggers.items():
-            scope = HplScope.globally()
-            behaviour = HplSimpleEvent.publish(name, phi)
-            pattern = HplPattern.absence(behaviour)
-            assumptions.append(HplProperty(scope, pattern))
+        # assumptions = list(self.assumptions)
+        # for name, phi in anti_triggers.items():
+        #     scope = HplScope.globally()
+        #     behaviour = HplSimpleEvent.publish(name, phi)
+        #     pattern = HplPattern.absence(behaviour)
+        #     assumptions.append(HplProperty(scope, pattern))
         # ------------------------------------------------------
         return self.spam_segment(conditions=anti_triggers, delay=delay, timeout=timeout)
 
