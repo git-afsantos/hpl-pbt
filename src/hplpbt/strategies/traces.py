@@ -34,7 +34,7 @@ INF: Final[float] = float('inf')
 
 
 @frozen
-class TraceSegment:
+class TraceSegmentStrategy:
     delay: float = 0.0
     timeout: float = INF
     mandatory: Iterable[MessageStrategy] = field(factory=tuple, converter=tuple)
@@ -44,9 +44,13 @@ class TraceSegment:
 
 @frozen
 class TraceStrategy:
-    name: str
+    trace_name: str
     hpl_property: HplProperty
-    segments: Iterable[TraceSegment] = field(factory=tuple, converter=tuple)
+    segments: Iterable[TraceSegmentStrategy] = field(factory=tuple, converter=tuple)
+
+    @property
+    def name(self) -> str:
+        return f'gen_{self.trace_name}'
 
     def all_msg_strategies(self) -> Set[MessageStrategy]:
         strategies: Set[MessageStrategy] = set()
@@ -107,11 +111,21 @@ def strategy_from_property(
 class _TraceNameGenerator:
     name: str = 'trace'
     index: int = 0
+    triggers: int = 0
+
+    @property
+    def trigger_name(self) -> str:
+        return f'{self.name}_trigger{self.triggers}'
 
     def generate(self) -> str:
         self.index += 1
+        self.triggers = 0
         self.name = f'trace{self.index}'
         return self.name
+
+    def generate_trigger(self) -> str:
+        self.triggers += 1
+        return self.trigger_name
 
 
 @frozen
@@ -158,7 +172,7 @@ class TraceStrategyBuilder:
 
     def build_from_property(self, hpl_property: HplProperty) -> TraceStrategy:
         trace_name = self._name_generator.generate()
-        segments: List[TraceSegment] = []
+        segments: List[TraceSegmentStrategy] = []
 
         # first segment: activator
         event = hpl_property.scope.activator
@@ -213,10 +227,23 @@ class TraceStrategyBuilder:
         event: HplEvent,
         delay: float = 0.0,
         timeout: float = INF,
-    ) -> TraceSegment:
-        segment: TraceSegment = self.spam_segment_avoiding(event, delay=delay, timeout=timeout)
+    ) -> TraceSegmentStrategy:
+        segment: TraceSegmentStrategy = self.spam_segment_avoiding(event, delay=delay, timeout=timeout)
         # FIXME apply general trace assumptions
-        builder = MessageStrategyBuilder(self.input_channels, self.type_defs)
+        # 1. alter type definitions to generate triggers satisfying conditions
+        triggers: Mapping[str, HplPredicate] = {}
+        for ev in event.simple_events():
+            assert isinstance(ev, HplSimpleEvent)
+            # discard unknown input channels
+            type_name: Optional[str] = self.input_channels.get(ev.name)
+            if type_name is None:
+                continue
+            # store predicates per message type
+            # phi = phi.disjoin(ev.predicate.negate())
+            triggers[type_name] = ev.predicate
+        modifier = self._name_generator.generate_trigger()
+        new_type_defs = _apply_extra_type_conditions(self.type_defs, triggers, modifier=modifier)
+        builder = MessageStrategyBuilder(self.input_channels, new_type_defs)
         mandatory: Set[MessageStrategy] = set()
         helpers: Set[MessageStrategy] = set(segment.helpers)
         for ev in event.simple_events():
@@ -231,7 +258,7 @@ class TraceStrategyBuilder:
         event: HplEvent,
         delay: float = 0.0,
         timeout: float = INF,
-    ) -> TraceSegment:
+    ) -> TraceSegmentStrategy:
         # build assumptions to avoid all possible triggers
         anti_triggers: Mapping[str, HplPredicate] = {}
         for ev in event.simple_events():
@@ -262,7 +289,7 @@ class TraceStrategyBuilder:
         conditions: Optional[Mapping[str, HplExpression]] = None,
         delay: float = 0.0,
         timeout: float = INF,
-    ) -> TraceSegment:
+    ) -> TraceSegmentStrategy:
         # build spam messages that avoid trigger conditions
         new_type_defs = _apply_extra_type_conditions(
             self.type_defs,
@@ -276,7 +303,7 @@ class TraceStrategyBuilder:
             strategy, dependencies = builder.build_pack_for_type_name(type_name)
             spam.add(strategy)
             helpers.update(dependencies)
-        return TraceSegment(delay=delay, timeout=timeout, spam=spam, helpers=helpers)
+        return TraceSegmentStrategy(delay=delay, timeout=timeout, spam=spam, helpers=helpers)
 
 
 ################################################################################

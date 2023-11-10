@@ -25,16 +25,16 @@ def {{ strategy.name }}(draw) -> {{ strategy.return_type }}:
 
 {# strategy: MessageStrategy #}
 {% macro trace_strategy(strategy) -%}
-{% set return_type = 'RT' ~ strategy.name %}
+{% set return_type = 'RT_' ~ strategy.trace_name %}
 {{ return_type }} = {{ strategy.get_return_type() }}
 
 
 @composite
-def gen_{{ strategy.name }}() -> List[{{ return_type }}]:
+def {{ strategy.name }}(draw) -> List[{{ return_type }}]:
     # HPL property:
     # {{ strategy.hpl_property }}
 {% for segment in strategy.segments %}
-    pass  # segment {{ loop.index }}
+{{ _trace_segment(segment, loop.index)|indent(4, first=true) }}
 {% endfor %}
     return []
 {% endmacro %}
@@ -48,4 +48,41 @@ def gen_{{ strategy.name }}() -> List[{{ return_type }}]:
 {# statement: Statement #}
 {% macro _statement(statement) -%}
 {{ statement }}
+{%- endmacro %}
+
+
+{# segment: TraceSegmentStrategy #}
+{# i: int #}
+{% macro _trace_segment(segment, i) -%}
+# trace segment {{ i }}
+{{ _generate_spam(segment.spam) }}
+{{ _generate_mandatory(segment.mandatory) }}
+# ----------------
+{%- endmacro %}
+
+
+{# spam_strategies: Iterable[MessageStrategy] #}
+{% macro _generate_spam(spam_strategies) -%}
+{% set spam_names = spam_strategies|map(attribute='name')|unique|sort|list %}
+{% if spam_names|length == 0 -%}
+# (no spam messages)
+{%- elif spam_names|length == 1 -%}
+spam = draw(lists({{ spam_names[0] }}(), max_size=3))
+{%- else -%}
+spam_elements = one_of({{ spam_names|join('(), ') }}())
+spam = draw(lists(spam_elements, max_size={{ 3 * spam_strategies|length }}))
+{%- endif %}
+{%- endmacro %}
+
+
+{# mandatory_strategies: Iterable[MessageStrategy] #}
+{% macro _generate_mandatory(mandatory_strategies) -%}
+{% set mandatory_names = mandatory_strategies|map(attribute='name')|unique|sort|list %}
+{% if mandatory_names|length == 0 -%}
+# (no mandatory messages)
+{%- elif mandatory_names|length == 1 -%}
+msg = draw({{ mandatory_names[0] }}())
+{%- else -%}
+msg = draw(one_of({{ mandatory_names|join('(), ') }}()))
+{%- endif %}
 {%- endmacro %}
