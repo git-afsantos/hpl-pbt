@@ -1145,13 +1145,17 @@ class Assignment(Statement):
 @frozen
 class Assumption(Statement):
     expression: HplExpression
+    message_variable: str = 'msg'
 
     @property
     def type(self) -> StatementType:
         return StatementType.ASSUME
 
     def dependencies(self) -> Set[str]:
-        return self.expression.external_references()
+        deps: Set[str] = self.expression.external_references()
+        if self.expression.contains_self_reference:
+            deps.add(self.message_variable)
+        return deps
 
     def __str__(self) -> str:
         r = TemplateRenderer.from_pkg_data()

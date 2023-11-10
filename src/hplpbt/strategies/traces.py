@@ -7,7 +7,7 @@
 
 from typing import Final, Iterable, List, Mapping, Optional, Set, Union
 
-from attrs import evolve, field, frozen
+from attrs import define, evolve, field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import (
     HplEvent,
@@ -44,7 +44,29 @@ class TraceSegment:
 
 @frozen
 class TraceStrategy:
+    name: str
+    hpl_property: HplProperty
     segments: Iterable[TraceSegment] = field(factory=tuple, converter=tuple)
+
+    def all_msg_strategies(self) -> Set[MessageStrategy]:
+        strategies: Set[MessageStrategy] = set()
+        for segment in self.segments:
+            strategies.update(segment.helpers)
+            strategies.update(segment.spam)
+            strategies.update(segment.mandatory)
+        return strategies
+
+    def get_return_type(self) -> str:
+        return_types: Set[str] = set()
+        for segment in self.segments:
+            return_types.update(strategy.return_type for strategy in segment.spam)
+            return_types.update(strategy.return_type for strategy in segment.mandatory)
+        if not return_types:
+            return 'Any'
+        if len(return_types) == 1:
+            for return_type in return_types:
+                return return_type
+        return f'Union[{", ".join(return_types)}]'
 
 
 ################################################################################
@@ -81,6 +103,17 @@ def strategy_from_property(
 ################################################################################
 
 
+@define
+class _TraceNameGenerator:
+    name: str = 'trace'
+    index: int = 0
+
+    def generate(self) -> str:
+        self.index += 1
+        self.name = f'trace{self.index}'
+        return self.name
+
+
 @frozen
 class TraceStrategyBuilder:
     input_channels: Mapping[str, str] = field(
@@ -104,6 +137,7 @@ class TraceStrategyBuilder:
             iterable_validator=instance_of(Iterable),
         ),
     )
+    _name_generator: _TraceNameGenerator = field(factory=_TraceNameGenerator)
 
     @input_channels.validator
     def _check_all_channels_defined(self, _attribute, channels: Mapping[str, str]) -> None:
@@ -119,10 +153,11 @@ class TraceStrategyBuilder:
             spec = spec.properties
         strategies = set()
         for hpl_property in spec:
-            strategies.update(self.build_from_property(hpl_property))
+            strategies.add(self.build_from_property(hpl_property))
         return strategies
 
     def build_from_property(self, hpl_property: HplProperty) -> TraceStrategy:
+        trace_name = self._name_generator.generate()
         segments: List[TraceSegment] = []
 
         # first segment: activator
@@ -171,7 +206,7 @@ class TraceStrategyBuilder:
         if event is not None:
             segments.append(self.publish_segment(event))
 
-        return TraceStrategy(segments=segments)
+        return TraceStrategy(trace_name, hpl_property, segments=segments)
 
     def publish_segment(
         self,
@@ -229,7 +264,11 @@ class TraceStrategyBuilder:
         timeout: float = INF,
     ) -> TraceSegment:
         # build spam messages that avoid trigger conditions
-        new_type_defs = _apply_extra_type_conditions(self.type_defs, conditions)
+        new_type_defs = _apply_extra_type_conditions(
+            self.type_defs,
+            conditions,
+            modifier=self._name_generator.name,
+        )
         builder = MessageStrategyBuilder(self.input_channels, new_type_defs)
         spam: Set[MessageStrategy] = set()
         helpers: Set[MessageStrategy] = set()
@@ -248,6 +287,7 @@ class TraceStrategyBuilder:
 def _apply_extra_type_conditions(
     type_defs: Mapping[str, MessageType],
     conditions: Optional[Mapping[str, HplPredicate]],
+    modifier: str = '',
 ) -> Mapping[str, MessageType]:
     if not conditions:
         return type_defs
@@ -258,7 +298,7 @@ def _apply_extra_type_conditions(
         if phi is None:
             new_type_defs[name] = type_def
         else:
-            new_name = f'{name}_v{i}'
+            new_name = f'{name}_{modifier}v{i}'
             i += 1
             phi = type_def.precondition.join(phi)
             new_type_defs[name] = evolve(type_def, name=new_name, precondition=phi)

@@ -2,7 +2,8 @@
 {# Copyright © 2023 André Santos #}
 
 {# input: imports: Iterable[Tuple[str, Iterable[str]]] #}
-{# input: strategies: Iterable[MessageStrategy] #}
+{# input: msg_strategies: Iterable[MessageStrategy] #}
+{# input: trace_strategies: Iterable[TraceStrategy] #}
 {# input: assumptions: Iterable[HplProperty] #}
 {# input: behaviour: Iterable[HplProperty] #}
 
@@ -42,6 +43,8 @@
 # Imports
 ###############################################################################
 
+from typing import List, Union
+
 from hypothesis import assume, given
 from hypothesis.strategies import (
     booleans,
@@ -63,7 +66,27 @@ import {{ pkg }}
 ###############################################################################
 
 
-{% for strategy in strategies %}
+{% for strategy in msg_strategies|sort(attribute='name') %}
 {{ S.msg_strategy(strategy) }}
+
+{% endfor %}
+
+###############################################################################
+# Trace Strategies
+###############################################################################
+
+{% for strategy in trace_strategies|sort(attribute='name') %}
+RT{{ loop.index }} = {{ strategy.get_return_type() }}
+
+
+@composite
+def gen_{{ strategy.name }}() -> List[RT{{ loop.index }}]:
+    # HPL property:
+    # {{ strategy.hpl_property }}
+{% for segment in strategy.segments %}
+    pass  # segment {{ loop.index }}
+{% endfor %}
+    return []
+
 
 {% endfor %}

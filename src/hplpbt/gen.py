@@ -15,7 +15,7 @@ from hpl.rewrite import canonical_form
 from hplrv.gen import TemplateRenderer
 
 from hplpbt.logic import split_assumptions
-from hplpbt.strategies.messages import MessageStrategy, strategies_from_spec
+from hplpbt.strategies.traces import strategies_from_spec, TraceStrategy
 from hplpbt.types import BuiltinParameterType, type_map_from_data
 
 ###############################################################################
@@ -69,13 +69,24 @@ def generate_tests(
     input_properties = _parsed_properties(input_properties)
     input_channels = msg_types[MSG_TYPES_KEY_CHANNELS]
     canonical_properties = [p for ps in map(canonical_form, input_properties) for p in ps]
+    # assumptions: properties only about input channels
+    # behaviour: properties about system output channels
     assumptions, behaviour = split_assumptions(canonical_properties, input_channels)
     type_defs = type_map_from_data(msg_types[MSG_TYPES_KEY_TYPEDEFS])
-    msg_strategies = strategies_from_spec(behaviour, input_channels, type_defs)
+    trace_strategies = strategies_from_spec(
+        behaviour,
+        input_channels,
+        type_defs,
+        assumptions=assumptions,
+    )
     r = TemplateRenderer.from_pkg_data(pkg='hplpbt', template_dir='templates')
+    msg_strategies = set()
+    for trace_strategy in trace_strategies:
+        msg_strategies.update(trace_strategy.all_msg_strategies())
     data = {
-        'strategies': msg_strategies,
-        'imports': _import_list(msg_strategies),
+        'trace_strategies': trace_strategies,
+        'msg_strategies': msg_strategies,
+        'imports': _import_list(trace_strategies),
         'assumptions': assumptions,
         'behaviour': behaviour,
     }
@@ -92,15 +103,16 @@ def _parsed_properties(properties: Iterable[Union[str, HplProperty]]) -> List[Hp
     return [p if isinstance(p, HplProperty) else parser.parse(p) for p in properties]
 
 
-def _import_list(strategies: Iterable[MessageStrategy]) -> List[Tuple[str, List[str]]]:
+def _import_list(trace_strategies: Iterable[TraceStrategy]) -> List[Tuple[str, List[str]]]:
     imports: Mapping[str, List[str]] = {}
-    for strategy in strategies:
-        classes = imports.get(strategy.package)
-        if classes is None:
-            classes = [strategy.class_name]
-            imports[strategy.package] = classes
-        else:
-            classes.append(strategy.class_name)
+    for trace_strategy in trace_strategies:
+        for msg_strategy in trace_strategy.all_msg_strategies():
+            classes = imports.get(msg_strategy.package)
+            if classes is None:
+                classes = [msg_strategy.class_name]
+                imports[msg_strategy.package] = classes
+            else:
+                classes.append(msg_strategy.class_name)
     import_list: List[Tuple[str, List[str]]] = []
     for package in sorted(imports.keys()):
         import_list.append((package, sorted(imports[package])))

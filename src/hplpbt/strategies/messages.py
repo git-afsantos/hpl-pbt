@@ -336,8 +336,8 @@ class SingleMessageStrategyBuilder:
         # 6. Construct the message object using the previously generated arguments.
         #    (Bundled into the previous step to avoid state variables)
         assert len(body) > 0
-        assert isinstance(body[-1], Assignment)
-        assert body[-1].variable == self.message_variable
+        # assert isinstance(body[-1], Assignment)
+        # assert body[-1].variable == self.message_variable
 
         # 7. Create data constructors for each message field referenced in the
         #    post-conditions (assumptions about the generated message).
@@ -440,14 +440,15 @@ class SingleMessageStrategyBuilder:
             body.extend(self._generate_argument(name, arg))
             kwargs.append((name, Reference(name)))
         for phi in self._preconditions:
-            body.append(Assumption(phi))
+            body.append(Assumption(phi, message_variable=self.message_variable))
 
-        body = sort_statements(body)
+        # body = sort_statements(body)
 
         name = self.message_type.qualified_name
         constructor = FunctionCall(name, arguments=args, keyword_arguments=kwargs)
         body.append(Assignment(self.message_variable, constructor))
-        return body
+        # return body
+        return sort_statements(body)
 
     def _generate_argument(self, name: str, arg: MessageStrategyArgument) -> List[Statement]:
         statements = []
