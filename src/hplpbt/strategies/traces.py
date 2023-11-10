@@ -37,8 +37,8 @@ INF: Final[float] = float('inf')
 
 @frozen
 class TraceSegment:
-    delay: float
-    timeout: float
+    delay: float = 0.0
+    timeout: float = INF
     mandatory: Iterable[MessageStrategy] = field(factory=tuple, converter=tuple)
     spam: Iterable[MessageStrategy] = field(factory=tuple, converter=tuple)
     helpers: Iterable[MessageStrategy] = field(factory=tuple, converter=tuple)
@@ -140,20 +140,31 @@ class TraceStrategyBuilder:
         elif hpl_property.pattern.is_requirement:
             event = hpl_property.pattern.trigger
             assert event is not None
-            # FIXME if timed pattern, do not avoid trigger all the time
-            segments.append(self.spam_segment_avoiding(event))
+            timeout = hpl_property.pattern.max_time
+            if hpl_property.pattern.has_max_time:
+                # 1. check for behaviour without trigger for the duration
+                segments.append(self.spam_segment_avoiding(event, timeout=timeout))
+                # 2. emit a trigger after the duration
+                segments.append(self.publish_segment(event))
+                # 3. avoid further triggers for the safe duration
+                # plus an unsafe interval to check for late behaviour
+                timeout = 3 * timeout if timeout < 1.0 else 2 * timeout
+                segments.append(self.spam_segment_avoiding(event, timeout=timeout))
+            else:
+                # untimed; check for behaviour without trigger
+                segments.append(self.spam_segment_avoiding(event, timeout=timeout))
         elif hpl_property.pattern.is_response:
             event = hpl_property.pattern.trigger
             assert event is not None
-            # FIXME include pattern duration
+            timeout = hpl_property.pattern.max_time
             segments.append(self.publish_segment(event))
-            segments.append(self.spam_segment())
+            segments.append(self.spam_segment(timeout=timeout))
         elif hpl_property.pattern.is_prevention:
             event = hpl_property.pattern.trigger
             assert event is not None
-            # FIXME include pattern duration
+            timeout = hpl_property.pattern.max_time
             segments.append(self.publish_segment(event))
-            segments.append(self.spam_segment())
+            segments.append(self.spam_segment(timeout=timeout))
         else:
             raise TypeError(f'unknown HPL property type: {hpl_property!r}')
 
@@ -164,8 +175,13 @@ class TraceStrategyBuilder:
 
         return TraceStrategy(segments=segments)
 
-    def publish_segment(self, event: HplEvent) -> TraceSegment:
-        segment: TraceSegment = self.spam_segment_avoiding(event)
+    def publish_segment(
+        self,
+        event: HplEvent,
+        delay: float = 0.0,
+        timeout: float = INF,
+    ) -> TraceSegment:
+        segment: TraceSegment = self.spam_segment_avoiding(event, delay=delay, timeout=timeout)
         # FIXME apply general trace assumptions
         builder = MessageStrategyBuilder(self.input_channels, self.type_defs)
         mandatory: Set[MessageStrategy] = set()
@@ -177,7 +193,12 @@ class TraceStrategyBuilder:
             helpers.update(dependencies)
         return evolve(segment, mandatory=mandatory, helpers=helpers)
 
-    def spam_segment_avoiding(self, event: HplEvent) -> TraceSegment:
+    def spam_segment_avoiding(
+        self,
+        event: HplEvent,
+        delay: float = 0.0,
+        timeout: float = INF,
+    ) -> TraceSegment:
         # build assumptions to avoid all possible triggers
         anti_triggers: Mapping[str, HplPredicate] = {}
         for ev in event.simple_events():
@@ -201,10 +222,13 @@ class TraceStrategyBuilder:
             pattern = HplPattern.absence(behaviour)
             assumptions.append(HplProperty(scope, pattern))
         # ------------------------------------------------------
-        return self.spam_segment(conditions=anti_triggers)
+        return self.spam_segment(conditions=anti_triggers, delay=delay, timeout=timeout)
 
-    def spam_segment(self,
+    def spam_segment(
+        self,
         conditions: Optional[Mapping[str, HplExpression]] = None,
+        delay: float = 0.0,
+        timeout: float = INF,
     ) -> TraceSegment:
         # build spam messages that avoid trigger conditions
         new_type_defs = _apply_extra_type_conditions(self.type_defs, conditions)
@@ -215,7 +239,7 @@ class TraceStrategyBuilder:
             strategy, dependencies = builder.build_pack_for_type_name(type_name)
             spam.add(strategy)
             helpers.update(dependencies)
-        return TraceSegment(0, INF, spam=spam, helpers=helpers)
+        return TraceSegment(delay=delay, timeout=timeout, spam=spam, helpers=helpers)
 
 
 ################################################################################
@@ -229,14 +253,15 @@ def _apply_extra_type_conditions(
 ) -> Mapping[str, MessageType]:
     if not conditions:
         return type_defs
+    i = 1
     new_type_defs = {}
     for name, type_def in type_defs.items():
         phi = conditions.get(name)
         if phi is None:
             new_type_defs[name] = type_def
         else:
-            # TODO maybe evolve a new name for the type def
-            # to use as strategy function name and avoid collisions
+            new_name = f'{name}_v{i}'
+            i += 1
             phi = type_def.precondition.join(phi)
-            new_type_defs[name] = evolve(type_def, precondition=phi)
+            new_type_defs[name] = evolve(type_def, name=new_name, precondition=phi)
     return new_type_defs
