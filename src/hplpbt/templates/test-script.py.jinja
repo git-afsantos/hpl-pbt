@@ -43,7 +43,9 @@
 # Imports
 ###############################################################################
 
-from typing import List, Union
+from typing import Generic, List, Union, TypeVar
+
+from dataclasses import dataclass
 
 from hypothesis import assume, given
 from hypothesis.strategies import (
@@ -56,6 +58,7 @@ from hypothesis.strategies import (
     one_of,
     sampled_from,
     text,
+    tuples,
 )
 
 {# from {{ pkg }} import {{ names|join(', ') }} #}
@@ -76,6 +79,15 @@ import {{ pkg }}
 ###############################################################################
 # Trace Strategies
 ###############################################################################
+
+T = TypeVar('T')
+
+
+@dataclass
+class TestMessage(Generic[T]):
+    channel: str
+    data: T
+    delay: float = 0.0
 
 {% for strategy in trace_strategies|sort(attribute='name') %}
 {{ S.trace_strategy(strategy) }}

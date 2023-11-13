@@ -34,12 +34,37 @@ INF: Final[float] = float('inf')
 
 
 @frozen
+class TraceEvent:
+    channel: str
+    strategy: MessageStrategy
+
+
+@frozen
 class TraceSegmentStrategy:
     delay: float = 0.0
     timeout: float = INF
-    mandatory: Iterable[MessageStrategy] = field(factory=tuple, converter=tuple)
-    spam: Iterable[MessageStrategy] = field(factory=tuple, converter=tuple)
+    mandatory: Iterable[TraceEvent] = field(factory=tuple, converter=tuple)
+    spam: Iterable[TraceEvent] = field(factory=tuple, converter=tuple)
     helpers: Iterable[MessageStrategy] = field(factory=tuple, converter=tuple)
+
+    @property
+    def has_timeout(self) -> bool:
+        return self.timeout < INF
+
+    @property
+    def has_spam(self) -> bool:
+        return len(self.spam) > 0
+
+    @property
+    def has_mandatory(self) -> bool:
+        return len(self.mandatory) > 0
+
+    def spam_strategies(self) -> List[MessageStrategy]:
+        return [event.strategy for event in self.spam]
+
+    def mandatory_strategies(self) -> List[MessageStrategy]:
+        return [event.strategy for event in self.mandatory]
+
 
 
 @frozen
@@ -56,15 +81,15 @@ class TraceStrategy:
         strategies: Set[MessageStrategy] = set()
         for segment in self.segments:
             strategies.update(segment.helpers)
-            strategies.update(segment.spam)
-            strategies.update(segment.mandatory)
+            strategies.update(segment.spam_strategies())
+            strategies.update(segment.mandatory_strategies())
         return strategies
 
     def get_return_type(self) -> str:
         return_types: Set[str] = set()
         for segment in self.segments:
-            return_types.update(strategy.return_type for strategy in segment.spam)
-            return_types.update(strategy.return_type for strategy in segment.mandatory)
+            return_types.update(strat.return_type for strat in segment.spam_strategies())
+            return_types.update(strat.return_type for strat in segment.mandatory_strategies())
         if not return_types:
             return 'Any'
         if len(return_types) == 1:
@@ -244,12 +269,12 @@ class TraceStrategyBuilder:
         modifier = self._name_generator.generate_trigger()
         new_type_defs = _apply_extra_type_conditions(self.type_defs, triggers, modifier=modifier)
         builder = MessageStrategyBuilder(self.input_channels, new_type_defs)
-        mandatory: Set[MessageStrategy] = set()
+        mandatory: Set[TraceEvent] = set()
         helpers: Set[MessageStrategy] = set(segment.helpers)
         for ev in event.simple_events():
             assert isinstance(ev, HplSimpleEvent)
             strategy, dependencies = builder.build_pack_from_simple_event(ev)
-            mandatory.add(strategy)
+            mandatory.add(TraceEvent(ev.name, strategy))
             helpers.update(dependencies)
         return evolve(segment, mandatory=mandatory, helpers=helpers)
 
@@ -297,11 +322,11 @@ class TraceStrategyBuilder:
             modifier=self._name_generator.name,
         )
         builder = MessageStrategyBuilder(self.input_channels, new_type_defs)
-        spam: Set[MessageStrategy] = set()
+        spam: Set[TraceEvent] = set()
         helpers: Set[MessageStrategy] = set()
-        for type_name in self.input_channels.values():
+        for channel_name, type_name in self.input_channels.items():
             strategy, dependencies = builder.build_pack_for_type_name(type_name)
-            spam.add(strategy)
+            spam.add(TraceEvent(channel_name, strategy))
             helpers.update(dependencies)
         return TraceSegmentStrategy(delay=delay, timeout=timeout, spam=spam, helpers=helpers)
 
