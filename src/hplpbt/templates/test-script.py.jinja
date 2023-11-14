@@ -43,9 +43,10 @@
 # Imports
 ###############################################################################
 
-from typing import Generic, List, Union, TypeVar
+from typing import Any, Callable, Generic, List, Union, TypeVar
 
 from dataclasses import dataclass
+import time
 
 from hypothesis import assume, given
 from hypothesis.strategies import (
@@ -86,14 +87,37 @@ T = TypeVar('T')
 @dataclass
 class TestMessage(Generic[T]):
     channel: str
-    data: Optional[T]
+    data: T
     delay: float = 0.0
-
-    @property
-    def is_receive(self) -> bool:
-        return not self.data
 
 {% for strategy in trace_strategies|sort(attribute='name') %}
 {{ S.trace_strategy(strategy) }}
+
+{% endfor %}
+###############################################################################
+# Entry Point
+###############################################################################
+
+
+def noop():
+    pass
+
+{% for strategy in trace_strategies|sort(attribute='name') %}
+{% set return_type = 'RT_' ~ strategy.trace_name %}
+@given(trace={{ strategy.name }}())
+def test_{{ strategy.trace_name }}(
+    trace: List[{{ return_type }}],
+    send: Callable[[str, Any], None],
+    sleep: Callable[[float], None] = time.sleep,
+    setup: Callable[[], None] = noop,
+    teardown: Callable[[], None] = noop,
+):
+    setup()
+    for msg in trace:
+        if msg.delay > 0.0:
+            sleep(msg.delay)
+        if msg.channel:
+            send(msg.channel, msg.data)
+    teardown()
 
 {% endfor %}
