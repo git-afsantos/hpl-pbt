@@ -26,11 +26,11 @@ def {{ strategy.name }}(draw) -> {{ strategy.return_type }}:
 {# strategy: MessageStrategy #}
 {% macro trace_strategy(strategy) -%}
 {% set return_type = 'RT_' ~ strategy.trace_name %}
-{{ return_type }} = {{ strategy.get_return_type() }}
+{{ return_type }} = TestMessage[{{ strategy.get_return_type() }}]
 
 
 @composite
-def {{ strategy.name }}(draw) -> List[TestMessage[{{ return_type }}]]:
+def {{ strategy.name }}(draw) -> List[{{ return_type }}]:
     # HPL property:
     # {{ strategy.hpl_property }}
     trace = []
