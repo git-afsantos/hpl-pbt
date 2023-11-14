@@ -86,8 +86,12 @@ T = TypeVar('T')
 @dataclass
 class TestMessage(Generic[T]):
     channel: str
-    data: T
+    data: Optional[T]
     delay: float = 0.0
+
+    @property
+    def is_receive(self) -> bool:
+        return not self.data
 
 {% for strategy in trace_strategies|sort(attribute='name') %}
 {{ S.trace_strategy(strategy) }}
