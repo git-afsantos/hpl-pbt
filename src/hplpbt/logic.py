@@ -7,12 +7,27 @@
 
 from typing import Container, Iterable, List, Tuple
 
-from hpl.ast import HplProperty
+from attrs import field, frozen
+
+from hpl.ast import HplPredicate, HplProperty
 from typeguard import typechecked
 
 ###############################################################################
 # Interface
 ###############################################################################
+
+
+@frozen
+class SystemAction:
+    name: str
+    channel: str
+    guard: HplPredicate
+
+
+@frozen
+class StateMachine:
+    inputs: Iterable[SystemAction] = field(factory=tuple, converter=tuple)
+    outputs: Iterable[SystemAction] = field(factory=tuple, converter=tuple)
 
 
 @typechecked
