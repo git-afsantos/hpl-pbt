@@ -67,6 +67,7 @@ def generate_tests(
 ) -> str:
     _validate_msg_types(msg_types)
     input_properties = _parsed_properties(input_properties)
+    input_properties = _discard_useless_properties(input_properties)
     input_channels = msg_types[MSG_TYPES_KEY_CHANNELS]
     canonical_properties = [p for ps in map(canonical_form, input_properties) for p in ps]
     # assumptions: properties only about input channels
@@ -117,6 +118,20 @@ def _import_list(trace_strategies: Iterable[TraceStrategy]) -> List[Tuple[str, L
     for package in sorted(imports.keys()):
         import_list.append((package, sorted(imports[package])))
     return import_list
+
+
+def _discard_useless_properties(properties: Iterable[HplProperty]) -> List[HplProperty]:
+    # drop unbounded liveness properties from the specification
+    # these do not impose any obligations on tests
+    new_properties = []
+    for prop in properties:
+        if not prop.scope.has_terminator:
+            if prop.pattern.is_existence and not prop.pattern.has_max_time:
+                continue  # discard
+            if prop.pattern.is_response and not prop.pattern.has_max_time:
+                continue  # discard
+        new_properties.append(prop)
+    return new_properties
 
 
 ###############################################################################
