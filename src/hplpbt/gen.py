@@ -5,11 +5,11 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Container, Final, Iterable, List, Mapping, Optional, Tuple, Union
+from typing import Any, Container, Final, Iterable, List, Mapping, Optional, Set, Tuple, Union
 
 from pathlib import Path
 
-from hpl.ast import HplProperty, HplSpecification
+from hpl.ast import HplProperty, HplSimpleEvent, HplSpecification
 from hpl.parser import property_parser, specification_parser
 from hpl.rewrite import canonical_form
 from hplrv.gen import TemplateRenderer
@@ -69,6 +69,7 @@ def generate_tests(
     input_properties = _parsed_properties(input_properties)
     input_properties = _discard_useless_properties(input_properties)
     input_channels = msg_types[MSG_TYPES_KEY_CHANNELS]
+    output_channels = _get_output_channels(input_properties, input_channels)
     canonical_properties = [p for ps in map(canonical_form, input_properties) for p in ps]
     # assumptions: properties only about input channels
     # behaviour: properties about system output channels
@@ -102,6 +103,34 @@ def generate_tests(
 def _parsed_properties(properties: Iterable[Union[str, HplProperty]]) -> List[HplProperty]:
     parser = property_parser()
     return [p if isinstance(p, HplProperty) else parser.parse(p) for p in properties]
+
+
+def _get_output_channels(
+    properties: Iterable[HplProperty],
+    input_channels: Container[str],
+) -> Set[str]:
+    output_channels = set()
+    for prop in properties:
+        if prop.scope.activator is not None:
+            for event in prop.scope.activator.simple_events():
+                assert isinstance(event, HplSimpleEvent)
+                if event.name not in input_channels:
+                    output_channels.add(event.name)
+        if prop.scope.terminator is not None:
+            for event in prop.scope.terminator.simple_events():
+                assert isinstance(event, HplSimpleEvent)
+                if event.name not in input_channels:
+                    output_channels.add(event.name)
+        if prop.pattern.trigger is not None:
+            for event in prop.pattern.trigger.simple_events():
+                assert isinstance(event, HplSimpleEvent)
+                if event.name not in input_channels:
+                    output_channels.add(event.name)
+        for event in prop.pattern.behaviour.simple_events():
+            assert isinstance(event, HplSimpleEvent)
+            if event.name not in input_channels:
+                output_channels.add(event.name)
+    return output_channels
 
 
 def _import_list(trace_strategies: Iterable[TraceStrategy]) -> List[Tuple[str, List[str]]]:
