@@ -402,11 +402,19 @@ class SingleMessageStrategyBuilder:
         conditions = split_and(pre.condition)
         # replace references to user-input variables
         for phi in conditions:
-            for alias in phi.external_references():
-                var = refmap[alias]
+            refs = phi.external_references()
+            # ignore preconditions that do not have references to arguments
+            # or preconditions that have references to unknown variables
+            if not refs:
+                continue
+            for alias in refs:
+                var = refmap.get(alias)
+                if not var:
+                    break
                 phi = phi.replace_var_reference(alias, HplVarReference(f'@{var}'))
-            # store only the final form of the expression
-            self._preconditions.append(phi)
+            else:
+                # store only the final form of the expression
+                self._preconditions.append(phi)
 
     def _refine_data_generators(self):
         # create a mapping of each argument for easier access
@@ -419,10 +427,7 @@ class SingleMessageStrategyBuilder:
         # iterate over all preconditions
         for phi in self._preconditions:
             refs = phi.external_references()
-            # ignore preconditions that do not have references to arguments
-            # or preconditions that have references to unknown variables
-            if not refs or any(not name in argmap for name in refs):
-                continue
+            assert refs and all(name in argmap for name in refs)
             # process precondition with data generators
             # use just one, other variables will be related to it
             for name in refs:
