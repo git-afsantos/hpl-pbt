@@ -264,15 +264,15 @@ class MessageStrategyBuilder:
         type_name: str,
     ) -> Tuple[MessageStrategy, Set[MessageStrategy]]:
         type_def: MessageType = self.type_defs[type_name]
-        deps = self._strategies_for_type(type_def)
+        deps = self._strategies_for_type(type_def, only_deps=True)
         main = self._strategy_for_type(type_def)
-        deps.remove(main)
         return main, deps
 
     def _strategies_for_type(
         self,
         type_def: MessageType,
         visited: Optional[Set[str]] = None,
+        only_deps: bool = False,
     ) -> Set[MessageStrategy]:
         visited = set() if visited is None else visited
         strategies = set()
@@ -283,7 +283,8 @@ class MessageStrategyBuilder:
             # avoid cyclic dependencies
             if other.name not in visited:
                 strategies.update(self._strategies_for_type(other, visited=visited))
-        strategies.add(self._strategy_for_type(type_def))
+        if not only_deps:
+            strategies.add(self._strategy_for_type(type_def))
         return strategies
 
     def _strategy_for_type(self, type_def: MessageType) -> MessageStrategy:
