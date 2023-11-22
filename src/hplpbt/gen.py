@@ -111,12 +111,12 @@ def _get_output_channels(
 ) -> Set[str]:
     output_channels = set()
     for prop in properties:
-        if prop.scope.activator is not None:
+        if prop.scope.has_activator:
             for event in prop.scope.activator.simple_events():
                 assert isinstance(event, HplSimpleEvent)
                 if event.name not in input_channels:
                     output_channels.add(event.name)
-        if prop.scope.terminator is not None:
+        if prop.scope.has_terminator:
             for event in prop.scope.terminator.simple_events():
                 assert isinstance(event, HplSimpleEvent)
                 if event.name not in input_channels:
