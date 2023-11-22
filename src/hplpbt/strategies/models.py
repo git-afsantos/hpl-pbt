@@ -7,6 +7,8 @@
 
 from typing import Final, Iterable, List, Mapping, Optional, Set, Union
 
+from collections import defaultdict
+
 from attrs import define, evolve, field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
 from hpl.ast import (
@@ -16,6 +18,7 @@ from hpl.ast import (
     HplProperty,
     HplSimpleEvent,
     HplSpecification,
+    HplVacuousTruth,
 )
 from hplpbt.strategies.messages import MessageStrategy, MessageStrategyBuilder
 from typeguard import typechecked
@@ -137,6 +140,82 @@ def strategy_from_property(
     assumptions = assumptions if assumptions is not None else []
     builder = TraceStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
     return builder.build_from_property(hpl_property)
+
+
+################################################################################
+# State Machine Builder
+################################################################################
+
+
+@frozen
+class InputRule:
+    channel: str
+    predicate: HplPredicate = field(factory=HplVacuousTruth)
+    inactive_monitors: Iterable[int] = field(factory=tuple, converter=tuple)
+    safe_monitors: Iterable[int] = field(factory=tuple, converter=tuple)
+    active_monitors: Iterable[int] = field(factory=tuple, converter=tuple)
+
+    def fork(
+        self,
+        phi: HplPredicate,
+        inactive_monitors: Optional[Iterable[int]] = None,
+        safe_monitors: Optional[Iterable[int]] = None,
+        active_monitors: Optional[Iterable[int]] = None,
+    ) -> 'InputRule':
+        inactive_monitors = (inactive_monitors or ()) + self.inactive_monitors
+        safe_monitors = (safe_monitors or ()) + self.safe_monitors
+        active_monitors = (active_monitors or ()) + self.active_monitors
+        phi = phi.join(self.predicate)
+        return evolve(
+            self,
+            predicate=phi,
+            inactive_monitors=inactive_monitors,
+            safe_monitors=safe_monitors,
+            active_monitors=active_monitors,
+        )
+
+
+def f(properties: Iterable[HplProperty], input_channels: Iterable[str]):
+    defaults = _get_default_predicates(properties)
+    rulemap = {c: [InputRule(c, predicate=defaults[c])] for c in input_channels}
+    i = 0
+    for prop in properties:
+        i += 1
+        if prop.scope.has_activator:
+            for event in prop.scope.activator.simple_events():
+                assert isinstance(event, HplSimpleEvent)
+                rules: List[InputRule] = rulemap.get(event.name, [])
+                forks = [rule.fork(event.predicate, inactive_monitors=(i,)) for rule in rules]
+                rules.extend(forks)
+        if prop.scope.has_terminator:
+            for event in prop.scope.terminator.simple_events():
+                assert isinstance(event, HplSimpleEvent)
+                rules: List[InputRule] = rulemap.get(event.name, [])
+                forks = [rule.fork(event.predicate, safe_monitors=(i,)) for rule in rules]
+                rules.extend(forks)
+        if prop.pattern.is_absence:
+            if prop.scope.is_global:
+                continue  # already handled
+            for event in prop.pattern.behaviour.simple_events():
+                assert isinstance(event, HplSimpleEvent)
+                rules: List[InputRule] = rulemap.get(event.name, [])
+                phi = event.predicate.negate()
+                forks = [rule.fork(phi, active_monitors=(i,)) for rule in rules]
+                rules.extend(forks)
+
+
+def _get_default_predicates(properties: Iterable[HplProperty]) -> Mapping[str, HplPredicate]:
+    predicates: Mapping[str, HplPredicate] = defaultdict(HplVacuousTruth)
+    for prop in properties:
+        if not prop.scope.is_global:
+            continue
+        if not prop.pattern.is_absence:
+            continue
+        for event in prop.pattern.behaviour.simple_events():
+            assert isinstance(event, HplSimpleEvent)
+            phi = event.predicate.negate()
+            predicates[event.name] = predicates[event.name].join(phi)
+    return predicates
 
 
 ################################################################################
