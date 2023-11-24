@@ -9,7 +9,7 @@ from typing import Any, Container, Final, Iterable, List, Mapping, Optional, Set
 
 from pathlib import Path
 
-from hpl.ast import HplProperty, HplSimpleEvent, HplSpecification
+from hpl.ast import HplEvent, HplProperty, HplSimpleEvent, HplSpecification
 from hpl.parser import property_parser, specification_parser
 from hpl.rewrite import canonical_form
 from hplrv.gen import TemplateRenderer
@@ -74,7 +74,8 @@ def generate_tests(
     # assumptions: properties about system input channels
     # behaviour: properties about system output channels
     assumptions, behaviour = split_assumptions(canonical_properties, input_channels)
-    _check_can_generate_data(assumptions, input_channels)  # FIXME
+    _check_atomic_conditions_assumptions(assumptions, input_channels)
+    _check_atomic_conditions_testable(behaviour, input_channels)
     type_defs = type_map_from_data(msg_types[MSG_TYPES_KEY_TYPEDEFS])
     trace_strategies = strategies_from_spec(
         behaviour,
@@ -164,48 +165,33 @@ def _discard_useless_properties(properties: Iterable[HplProperty]) -> List[HplPr
     return new_properties
 
 
-def _check_can_generate_data(assumptions: Iterable[HplProperty], input_channels: Container[str]):
-    events_to_check: List[HplSimpleEvent] = []
+def _check_atomic_conditions_assumptions(
+    assumptions: Iterable[HplProperty],
+    input_channels: Container[str],
+):
+    # assumptions will avoid generating what they can
+    # if we can rely on behaviour events, we do not need to generate specific data
     for prop in assumptions:
-        if prop.scope.has_activator:
-            has_outputs: bool = False
-            events: List[HplSimpleEvent] = []
-            for event in prop.scope.activator.simple_events():
-                assert isinstance(event, HplSimpleEvent)
-                if event.name in input_channels:
-                    events.append(event)
-                else:
-                    has_outputs = True
-            if not has_outputs:
-                events_to_check.extend(events)
-        if prop.scope.has_terminator:
-            has_outputs: bool = False
-            events: List[HplSimpleEvent] = []
-            for event in prop.scope.terminator.simple_events():
-                assert isinstance(event, HplSimpleEvent)
-                if event.name in input_channels:
-                    events.append(event)
-                else:
-                    has_outputs = True
-            if not has_outputs:
-                events_to_check.extend(events)
-        if prop.pattern.trigger is not None:
-            has_outputs: bool = False
-            events: List[HplSimpleEvent] = []
-            for event in prop.pattern.trigger.simple_events():
-                assert isinstance(event, HplSimpleEvent)
-                if event.name in input_channels:
-                    events.append(event)
-                else:
-                    has_outputs = True
-            if not has_outputs:
-                events_to_check.extend(events)
-        for event in prop.pattern.behaviour.simple_events():
-            assert isinstance(event, HplSimpleEvent)
-            if event.name in input_channels:
-                events_to_check.append(event)
-    for event in events_to_check:
-        check_atomic_conditions_in_canonical_form(event.predicate)
+        _check_can_generate_event(prop.pattern.behaviour, input_channels)
+
+
+def _check_atomic_conditions_testable(
+    properties: Iterable[HplProperty],
+    input_channels: Container[str],
+):
+    for prop in properties:
+        _check_can_generate_event(prop.scope.activator, input_channels)
+        _check_can_generate_event(prop.scope.terminator, input_channels)
+        _check_can_generate_event(prop.pattern.trigger, input_channels)
+
+
+def _check_can_generate_event(any_event: Optional[HplEvent], input_channels: Container[str]):
+    if any_event is None:
+        return
+    for event in any_event.simple_events():
+        assert isinstance(event, HplSimpleEvent)
+        if event.name in input_channels:
+            check_atomic_conditions_in_canonical_form(event.predicate)
 
 
 ###############################################################################
