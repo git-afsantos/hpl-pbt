@@ -9,7 +9,14 @@ from typing import Container, Iterable, List, Tuple
 
 from attrs import field, frozen
 
-from hpl.ast import HplPredicate, HplProperty
+from hpl.ast import (
+    HplEvent,
+    HplEventDisjunction,
+    HplPattern,
+    HplPredicate,
+    HplProperty,
+    HplSimpleEvent,
+)
 from typeguard import typechecked
 
 ###############################################################################
@@ -82,16 +89,48 @@ def _split_liveness(
     hpl_property: HplProperty,
     input_channels: Container[str],
 ) -> Tuple[List[HplProperty], List[HplProperty]]:
-    assumption = False
-    behaviour = False
+    inputs: List[HplSimpleEvent] = []
+    outputs: List[HplSimpleEvent] = []
     for b in hpl_property.pattern.behaviour.simple_events():
+        assert isinstance(b, HplSimpleEvent)
         if b.name in input_channels:
-            assumption = True
+            inputs.append(b)
         else:
-            behaviour = True
-    if assumption and behaviour:
-        return [hpl_property], [hpl_property]
-    elif assumption:
+            outputs.append(b)
+    if not outputs:
+        # all behaviour events are inputs
         return [hpl_property], []
-    else:
+    if not inputs:
+        # all behaviour events are outputs
         return [], [hpl_property]
+    # mixed input and output events
+    assert inputs and outputs
+    # for the purposes of testing, avoid inputs and force the outputs
+    # recreate the original property, but expecting only outputs
+    new_pattern = hpl_property.pattern.but(behaviour=_recreate_events(outputs))
+    hpl_property = hpl_property.but(pattern=new_pattern)
+    # recreate an opposite of the original property, affecting only inputs
+    if hpl_property.pattern.is_existence:
+        new_pattern = HplPattern.absence(
+            _recreate_events(inputs),
+            min_time=hpl_property.pattern.min_time,
+            max_time=hpl_property.pattern.max_time,
+        )
+    else:
+        assert hpl_property.pattern.is_response
+        new_pattern = HplPattern.prevention(
+            hpl_property.pattern.trigger,
+            _recreate_events(inputs),
+            min_time=hpl_property.pattern.min_time,
+            max_time=hpl_property.pattern.max_time,
+        )
+    assumption = hpl_property.but(pattern=new_pattern)
+    return [assumption], [hpl_property]
+
+
+def _recreate_events(events: List[HplSimpleEvent]) -> HplEvent:
+    assert events
+    result = events[-1]
+    for i in range(len(events) - 1):
+        result = HplEventDisjunction(events[i], result)
+    return result
