@@ -10,13 +10,17 @@ from typing import Container, Iterable, List, Tuple
 from attrs import field, frozen
 
 from hpl.ast import (
+    HplBinaryOperator,
     HplEvent,
     HplEventDisjunction,
+    HplExpression,
     HplPattern,
     HplPredicate,
     HplProperty,
     HplSimpleEvent,
+    HplUnaryOperator,
 )
+from hpl.rewrite import simplify
 from typeguard import typechecked
 
 ###############################################################################
@@ -66,6 +70,17 @@ def split_assumptions(
         assumptions.extend(a)
         behaviour.extend(b)
     return assumptions, behaviour
+
+
+@typechecked
+def check_atomic_conditions_in_canonical_form(predicate: HplPredicate):
+    for phi in _atomic_conditions(predicate):
+        if isinstance(phi, HplBinaryOperator):
+            if not phi.operator.is_comparison:
+                continue
+            x: HplExpression = phi.operand1
+            if x.is_operator or x.is_quantifier:
+                raise ValueError(f'unable to handle non-canonical expression: {phi}')
 
 
 ###############################################################################
@@ -134,3 +149,26 @@ def _recreate_events(events: List[HplSimpleEvent]) -> HplEvent:
     for i in range(len(events) - 1):
         result = HplEventDisjunction(events[i], result)
     return result
+
+
+def _atomic_conditions(predicate: HplPredicate) -> List[HplExpression]:
+    conditions = []
+    stack = [simplify(predicate.condition)]
+    while stack:
+        phi: HplExpression = stack.pop()
+        if isinstance(phi, HplUnaryOperator):
+            if phi.operator.is_not:
+                stack.append(phi.operand)
+            else:
+                conditions.append(phi)
+        elif isinstance(phi, HplBinaryOperator):
+            op = phi.operator
+            if phi.operator.is_comparison or phi.operator.is_inclusion:
+                conditions.append(phi)
+            else:
+                assert not phi.operator.is_arithmetic
+                stack.append(phi.operand1)
+                stack.append(phi.operand2)
+        else:
+            conditions.append(phi)
+    return conditions

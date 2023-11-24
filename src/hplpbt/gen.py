@@ -14,7 +14,7 @@ from hpl.parser import property_parser, specification_parser
 from hpl.rewrite import canonical_form
 from hplrv.gen import TemplateRenderer
 
-from hplpbt.logic import split_assumptions
+from hplpbt.logic import check_atomic_conditions_in_canonical_form, split_assumptions
 from hplpbt.strategies.traces import strategies_from_spec, TraceStrategy
 from hplpbt.types import BuiltinParameterType, type_map_from_data
 
@@ -74,6 +74,7 @@ def generate_tests(
     # assumptions: properties about system input channels
     # behaviour: properties about system output channels
     assumptions, behaviour = split_assumptions(canonical_properties, input_channels)
+    _check_can_generate_data(assumptions, input_channels)  # FIXME
     type_defs = type_map_from_data(msg_types[MSG_TYPES_KEY_TYPEDEFS])
     trace_strategies = strategies_from_spec(
         behaviour,
@@ -161,6 +162,50 @@ def _discard_useless_properties(properties: Iterable[HplProperty]) -> List[HplPr
                 continue  # discard
         new_properties.append(prop)
     return new_properties
+
+
+def _check_can_generate_data(assumptions: Iterable[HplProperty], input_channels: Container[str]):
+    events_to_check: List[HplSimpleEvent] = []
+    for prop in assumptions:
+        if prop.scope.has_activator:
+            has_outputs: bool = False
+            events: List[HplSimpleEvent] = []
+            for event in prop.scope.activator.simple_events():
+                assert isinstance(event, HplSimpleEvent)
+                if event.name in input_channels:
+                    events.append(event)
+                else:
+                    has_outputs = True
+            if not has_outputs:
+                events_to_check.extend(events)
+        if prop.scope.has_terminator:
+            has_outputs: bool = False
+            events: List[HplSimpleEvent] = []
+            for event in prop.scope.terminator.simple_events():
+                assert isinstance(event, HplSimpleEvent)
+                if event.name in input_channels:
+                    events.append(event)
+                else:
+                    has_outputs = True
+            if not has_outputs:
+                events_to_check.extend(events)
+        if prop.pattern.trigger is not None:
+            has_outputs: bool = False
+            events: List[HplSimpleEvent] = []
+            for event in prop.pattern.trigger.simple_events():
+                assert isinstance(event, HplSimpleEvent)
+                if event.name in input_channels:
+                    events.append(event)
+                else:
+                    has_outputs = True
+            if not has_outputs:
+                events_to_check.extend(events)
+        for event in prop.pattern.behaviour.simple_events():
+            assert isinstance(event, HplSimpleEvent)
+            if event.name in input_channels:
+                events_to_check.append(event)
+    for event in events_to_check:
+        check_atomic_conditions_in_canonical_form(event.predicate)
 
 
 ###############################################################################
