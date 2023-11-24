@@ -71,7 +71,7 @@ def generate_tests(
     input_channels = msg_types[MSG_TYPES_KEY_CHANNELS]
     output_channels = _get_output_channels(input_properties, input_channels)
     canonical_properties = [p for ps in map(canonical_form, input_properties) for p in ps]
-    # assumptions: properties only about input channels
+    # assumptions: properties about system input channels
     # behaviour: properties about system output channels
     assumptions, behaviour = split_assumptions(canonical_properties, input_channels)
     type_defs = type_map_from_data(msg_types[MSG_TYPES_KEY_TYPEDEFS])
