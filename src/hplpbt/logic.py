@@ -82,8 +82,16 @@ def _split_liveness(
     hpl_property: HplProperty,
     input_channels: Container[str],
 ) -> Tuple[List[HplProperty], List[HplProperty]]:
-    # FIXME: this logic is not quite right
+    assumption = False
+    behaviour = False
     for b in hpl_property.pattern.behaviour.simple_events():
         if b.name in input_channels:
-            return [hpl_property], []
-    return [], [hpl_property]
+            assumption = True
+        else:
+            behaviour = True
+    if assumption and behaviour:
+        return [hpl_property], [hpl_property]
+    elif assumption:
+        return [hpl_property], []
+    else:
+        return [], [hpl_property]
