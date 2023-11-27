@@ -41,6 +41,44 @@ from hplpbt.strategies.ast import (
 )
 
 ################################################################################
+# Internal Structures: Numeric Expressions
+################################################################################
+
+# z < 100 - y - x
+# x > 10
+# y = x + 20
+
+# x, y, z = Symbol()
+# --- First Pass ---
+# z.max = Sum([100, -y, -x])
+# z.exclude_max = True
+# x.min = 10
+# x.exclude_min = True
+# y = Sum([x, 20])
+# --- Second Pass ---
+# z.max = Sum([100, -Sum([x, 20]), -x])
+
+# x > 10
+# y = x + 20
+# z < 100 - (x + 20) - x
+
+# class Expression
+#   min_value, max_value: Expression
+#   exclude_min, exclude_max: bool
+#   negative: bool
+#   exponent: Expression
+
+# class Symbol(Expression)
+#   name: str
+
+# class Sum(Expression)
+#   parts: List[Product | Symbol | Literal]
+
+# class Product(Expression)
+#   factors: List[Sum | Symbol | Literal]
+
+
+################################################################################
 # Internal Structures: Data Generators
 ################################################################################
 
@@ -67,39 +105,6 @@ class DataVariable:
 
     def gte(self, expr: HplExpression):
         pass
-
-
-# x + y + z < 100
-# x > 10
-# y = x + 20
-
-# x, y, z = Symbol()
-# s1 = Sum([x, y, z], max=100, exclude_max=True)
-# x.min = 10
-# x.exclude_min = True
-# y = Sum([x, 20])
-# s1 = Sum([Product([x, 2]), z, 20], max=100, exclude_max=True)
-# s1 = Sum([Product([x, 2]), z], max=80, exclude_max=True)
-# z.max = Sum([80, -2x])
-
-# x > 10
-# y = x + 20
-# z < 80 - 2x
-
-# class Expression
-#   min_value, max_value: Expression
-#   exclude_min, exclude_max: bool
-#   negative: bool
-#   exponent: Expression
-
-# class Symbol(Expression)
-#   name: str
-
-# class Sum(Expression)
-#   parts: List[Product | Symbol | Literal]
-
-# class Product(Expression)
-#   factors: List[Sum | Symbol | Literal]
 
 
 @define
