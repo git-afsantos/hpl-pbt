@@ -7,7 +7,15 @@
 
 from math import isnan
 
-from hplpbt.strategies._calc import add, INFINITY, MINUS_INFINITY, NumberLiteral, Sum, Symbol
+from hplpbt.strategies._calc import (
+    add,
+    INFINITY,
+    MINUS_INFINITY,
+    NumberLiteral,
+    Product,
+    Sum,
+    Symbol,
+)
 
 ################################################################################
 # Test Functions
@@ -68,6 +76,14 @@ def test_solve_symbol():
 
 
 def test_solve_sum():
+    # identity element
+    x = Symbol('x')
+    c = NumberLiteral(0)
+    result = Sum((x, c)).solve()
+    assert result.is_symbol
+    assert isinstance(result, Symbol)
+    assert result is x
+
     # substitution of one part
     x = Symbol('x')
     y = Symbol('y')
@@ -104,6 +120,64 @@ def test_solve_sum():
     y = Symbol('y')
     c = NumberLiteral(42)
     result = Sum((x, y, c)).solve(x=Symbol('y', minus_sign=True))
+    assert result.is_literal
+    assert isinstance(result, NumberLiteral)
+    assert result == c
+
+
+def test_solve_product():
+    # identity element
+    x = Symbol('x')
+    c = NumberLiteral(1)
+    result = Product((x, c)).solve()
+    assert result.is_symbol
+    assert isinstance(result, Symbol)
+    assert result is x
+
+    # absorbing element
+    x = Symbol('x')
+    c = NumberLiteral(0)
+    result = Product((x, c)).solve()
+    assert result.is_literal
+    assert isinstance(result, NumberLiteral)
+    assert result is c
+
+    # substitution of one part
+    x = Symbol('x')
+    y = Symbol('y')
+    c = NumberLiteral(21)
+    result = Product((x, y, c)).solve(y=NumberLiteral(2))
+    assert result.is_product
+    assert isinstance(result, Product)
+    assert len(result.factors) == 2
+    assert result.factors[0] == x
+    assert result.factors[1].is_literal
+    assert isinstance(result.factors[1], NumberLiteral)
+    assert result.factors[1].value == 42
+
+    # substitution of all parts
+    x = Symbol('x')
+    y = Symbol('y')
+    c = NumberLiteral(42)
+    result = Product((x, y, c)).solve(x=y, y=NumberLiteral(1))
+    assert result.is_literal
+    assert isinstance(result, NumberLiteral)
+    assert result.value == 42
+
+    # cancellation of literals
+    x = Symbol('x')
+    y = Symbol('y')
+    c = NumberLiteral(2)
+    result = Product((x, y, c)).solve(y=NumberLiteral(1/2))
+    assert result.is_symbol
+    assert isinstance(result, Symbol)
+    assert result == x
+
+    # cancellation of symbols
+    x = Symbol('x')
+    y = Symbol('y')
+    c = NumberLiteral(42)
+    result = Product((x, y, c)).solve(x=Symbol('y', exponent=NumberLiteral(-1)))
     assert result.is_literal
     assert isinstance(result, NumberLiteral)
     assert result == c
