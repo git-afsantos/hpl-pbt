@@ -10,6 +10,7 @@ from math import isnan
 from hplpbt.strategies._calc import (
     add,
     INFINITY,
+    inverse,
     MINUS_INFINITY,
     NumberLiteral,
     Product,
@@ -177,7 +178,7 @@ def test_solve_product():
     x = Symbol('x')
     y = Symbol('y')
     c = NumberLiteral(42)
-    result = Product((x, y, c)).solve(x=Symbol('y', exponent=NumberLiteral(-1)))
+    result = Product((x, y, c)).solve(x=inverse(Symbol('y')))
     assert result.is_literal
     assert isinstance(result, NumberLiteral)
     assert result == c
