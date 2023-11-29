@@ -491,17 +491,30 @@ class Product(NumericExpression):
 
     def solve(self, **symbols: Mapping[str, NumericExpression]) -> NumericExpression:
         factors = []
+        variables = []
         constant = ONE
+        # reduce literal values
         for factor in self.factors:
             value = factor.solve(**symbols)
             if value.is_literal:
                 constant = multiply(constant, value)
+            elif value.is_symbol:
+                variables.append(value)
             else:
                 factors.append(value)
-        if not factors:
-            # fully resolved
-            return constant
-        if constant.value == 0:
+        # cancel opposite symbols
+        while variables:
+            x = variables.pop()
+            for i in range(len(variables)):
+                y = variables[i]
+                p = multiply(x, y)
+                if p == ONE:
+                    del variables[i]
+                    break
+            else:
+                factors.append(x)
+        # fully resolved?
+        if not factors or constant.value == 0:
             return constant
         if constant.value != 1:
             factors.append(constant)
@@ -568,16 +581,18 @@ def multiply(a: NumericExpression, b: NumericExpression) -> NumericExpression:
         assert isinstance(a, Symbol)
         assert isinstance(b, Symbol)
         if a.name == b.name:
+            e: NumberLiteral = add(a.exponent, b.exponent)
+            if e.is_literal and e.value == 0:
+                return ONE
             return Symbol(
                 name=a.name,
-                exponent=add(a.exponent, b.exponent),
+                exponent=e,
                 minus_sign=(a.minus_sign ^ b.minus_sign),
                 min_value=multiply(a.min_value, b.min_value),
                 max_value=multiply(a.max_value, b.max_value),
                 exclude_min=(a.exclude_min or b.exclude_min),
                 exclude_max=(a.exclude_max or b.exclude_max),
             )
-        # TODO reduce to one via division
     elif a.is_product:
         assert isinstance(a, Product)
         return a.multiply(b)
