@@ -5,11 +5,23 @@
 # Imports
 ###############################################################################
 
-from typing import Final, Iterable, Mapping, Set, Union
+from typing import Final, Iterable, List, Mapping, Set, Union
 
 from enum import auto, Enum
+
 from attrs import evolve, field, frozen
 from attrs.validators import deep_iterable, instance_of, min_len
+from hpl.ast import (
+    HplBinaryOperator,
+    HplDataAccess,
+    HplExpression,
+    HplUnaryOperator,
+    HplValue,
+    Not,
+    Or,
+)
+from typeguard import typechecked
+
 from hplpbt.errors import ContradictionError
 
 ################################################################################
@@ -23,6 +35,7 @@ class ExpressionType(Enum):
     SYMBOL = auto()
     SUM = auto()
     PRODUCT = auto()
+    POWER = auto()
     CALL = auto()
 
 
@@ -70,6 +83,10 @@ class Expression:
         return self.type == ExpressionType.PRODUCT
 
     @property
+    def is_power(self) -> bool:
+        return self.type == ExpressionType.POWER
+
+    @property
     def is_function_call(self) -> bool:
         return self.type == ExpressionType.CALL
 
@@ -112,9 +129,6 @@ class NumericExpression(Expression):
     def minus_sign(self) -> bool:
         raise NotImplementedError()
 
-    def negative(self) -> 'NumericExpression':
-        raise NotImplementedError()
-
     def solve(self, **symbols: Mapping[str, 'NumericExpression']) -> 'NumericExpression':
         raise NotImplementedError()
 
@@ -151,10 +165,6 @@ class NumberLiteral(NumericExpression):
     def minus_sign(self) -> bool:
         return self.value < 0
 
-    @property
-    def exponent(self) -> NumericExpression:
-        return NumberLiteral(1)
-
     @classmethod
     def zero(cls) -> 'NumberLiteral':
         return cls(0)
@@ -162,9 +172,6 @@ class NumberLiteral(NumericExpression):
     @classmethod
     def one(cls) -> 'NumberLiteral':
         return cls(1)
-    
-    def negative(self) -> 'NumberLiteral':
-        return NumberLiteral(-self.value)
 
     def solve(self, **_symbols: Mapping[str, NumericExpression]) -> NumericExpression:
         return self
@@ -196,64 +203,54 @@ def _default_symbol_name() -> str:
 @frozen
 class Symbol(NumericExpression):
     name: str = field(factory=_default_symbol_name)
-    exponent: NumericExpression = field(default=ONE, converter=_ensure_num_expr)
     # overrides
     minus_sign: bool = False 
-    min_value: NumericExpression = field(default=MINUS_INFINITY, converter=_ensure_num_expr)
-    max_value: NumericExpression = field(default=INFINITY, converter=_ensure_num_expr)
-    exclude_min: bool = False
-    exclude_max: bool = False
+    min_value: NumericExpression = field(
+        default=MINUS_INFINITY,
+        converter=_ensure_num_expr,
+        eq=False,
+    )
+    max_value: NumericExpression = field(default=INFINITY, converter=_ensure_num_expr, eq=False)
+    exclude_min: bool = field(default=False, eq=False)
+    exclude_max: bool = field(default=False, eq=False)
 
     @property
     def type(self) -> ExpressionType:
         return ExpressionType.SYMBOL
-
-    def negative(self) -> NumericExpression:
-        return evolve(
-            self,
-            minus_sign=(not self.minus_sign),
-            min_value=self.max_value.negative(),
-            max_value=self.min_value.negative(),
-            exclude_min=self.exclude_max,
-            exclude_max=self.exclude_min,
-        )
 
     def solve(self, **symbols: Mapping[str, NumericExpression]) -> NumericExpression:
         backup = self
         # solve constituent bits of information
         min_value = self.min_value.solve(**symbols)
         max_value = self.max_value.solve(**symbols)
-        exponent = self.exponent.solve(**symbols)
-        if not min_value.is_literal or not max_value.is_literal or not exponent.is_literal:
+        if not min_value.is_literal or not max_value.is_literal:
             # cannot ever get to an actual value
-            return evolve(self, min_value=min_value, max_value=max_value, exponent=exponent)
+            return evolve(self, min_value=min_value, max_value=max_value)
         assert isinstance(min_value, NumberLiteral)
         assert isinstance(max_value, NumberLiteral)
-        assert isinstance(exponent, NumberLiteral)
         if min_value is not self.min_value:
-            backup = evolve(self, min_value=min_value, max_value=max_value, exponent=exponent)
+            backup = evolve(self, min_value=min_value, max_value=max_value)
         elif max_value is not self.max_value:
-            backup = evolve(self, min_value=min_value, max_value=max_value, exponent=exponent)
-        elif exponent is not self.exponent:
-            backup = evolve(self, min_value=min_value, max_value=max_value, exponent=exponent)
+            backup = evolve(self, min_value=min_value, max_value=max_value)
 
         # recursively substitute until reaching a dead end
         visited = {self.name}
         value = symbols.get(self.name, self)
-        while value.is_symbol:
+        while value.is_symbol or value.is_reference:
             if value.name in visited:
                 break  # undefined or cyclic
             visited.add(value.name)
             value = symbols.get(value.name, value)
 
         # got to another symbol?
+        if value.is_reference:
+            return backup if value.name == self.name else Symbol(value.name)
         if value.is_symbol:
             assert isinstance(value, Symbol)
             if value.name == self.name:
                 return backup
             return evolve(
                 value,
-                exponent=multiply(exponent, value.exponent),
                 min_value=min_value,
                 max_value=max_value,
                 exclude_min=self.exclude_min,
@@ -265,10 +262,7 @@ class Symbol(NumericExpression):
         if value.is_literal:
             # fully resolved, calculate value
             assert isinstance(value, NumberLiteral)
-            x = value.value
-            x = x ** exponent.value
-            if self.minus_sign:
-                x = -x
+            x = -value.value if self.minus_sign else value.value
             # validation
             a = min_value.value
             b = max_value.value
@@ -288,15 +282,7 @@ class Symbol(NumericExpression):
         return value.solve(**symbols)
 
     def __str__(self) -> str:
-        if self.minus_sign:
-            if self.exponent == ONE:
-                return f'-{self.name}'
-            else:
-                return f'-({self.name} ** {self.exponent})'
-        elif self.exponent == ONE:
-            return self.name
-        else:
-            return f'({self.name} ** {self.exponent})'
+        return f'-{self.name}' if self.minus_sign else self.name
 
 
 @frozen
@@ -345,53 +331,31 @@ class Sum(NumericExpression):
         return False
 
     def add(self, value: NumericExpression) -> NumericExpression:
-        parts = []
-        constant = ZERO
-        for part in self.parts:
-            if part.is_literal:
-                constant = add(constant, part)
-            else:
-                parts.append(part)
-        if value.is_literal:
-            assert isinstance(value, NumberLiteral)
-            constant = add(constant, value)
-        elif value.is_sum:
-            assert isinstance(value, Sum)
-            for part in value.parts:
-                if part.is_literal:
-                    constant = add(constant, part)
-                else:
-                    parts.append(part)
-        else:
-            parts.append(value)
-        if not parts:
-            return constant
-        if constant.value == 0:
-            return Sum(parts=parts) if len(parts) > 1 else parts[0]
-        parts.append(constant)
-        return Sum(parts=parts)
+        parts = list(self.parts)
+        parts.append(value)
+        return Sum(parts).solve()
 
     def solve(self, **symbols: Mapping[str, NumericExpression]) -> NumericExpression:
-        parts = []
-        variables = []
+        stack = []
         constant = ZERO
         # reduce literal values
         for part in self.parts:
             value = part.solve(**symbols)
             if value.is_literal:
                 constant = add(constant, value)
-            elif value.is_symbol:
-                variables.append(value)
+            elif value.is_sum:
+                stack.extend(value.parts)
             else:
-                parts.append(value)
+                stack.append(value)
         # cancel opposite symbols
-        while variables:
-            x = variables.pop()
-            for i in range(len(variables)):
-                y = variables[i]
+        parts = []
+        while stack:
+            x = stack.pop()
+            for i in range(len(stack)):
+                y = stack[i]
                 z = add(x, y)
                 if z == ZERO:
-                    del variables[i]
+                    del stack[i]
                     break
             else:
                 parts.append(x)
@@ -462,59 +426,39 @@ class Product(NumericExpression):
         return False
 
     def multiply(self, value: NumericExpression) -> NumericExpression:
-        factors = []
-        constant = ONE
-        for factor in self.factors:
-            if factor.is_literal:
-                constant = multiply(constant, factor)
-            else:
-                factors.append(factor)
-        if value.is_literal:
-            assert isinstance(value, NumberLiteral)
-            constant = multiply(constant, value)
-        elif value.is_product:
-            assert isinstance(value, Product)
-            for factor in value.factors:
-                if factor.is_literal:
-                    constant = multiply(constant, factor)
-                else:
-                    factors.append(factor)
-        else:
-            factors.append(value)
-        if not factors:
-            return constant
-        if constant.value == 0:
-            return constant
-        if constant.value != 1:
-            factors.append(constant)
-        return Product(factors=factors) if len(factors) > 1 else factors[0]
+        factors = list(self.factors)
+        factors.append(value)
+        return Product(factors).solve()
 
     def solve(self, **symbols: Mapping[str, NumericExpression]) -> NumericExpression:
-        factors = []
-        variables = []
+        stack = []
         constant = ONE
         # reduce literal values
         for factor in self.factors:
             value = factor.solve(**symbols)
             if value.is_literal:
                 constant = multiply(constant, value)
-            elif value.is_symbol:
-                variables.append(value)
+            elif value.is_product:
+                stack.extend(value.factors)
             else:
-                factors.append(value)
+                stack.append(value)
+        # fully resolved?
+        if constant.value == 0:
+            return constant
         # cancel opposite symbols
-        while variables:
-            x = variables.pop()
-            for i in range(len(variables)):
-                y = variables[i]
+        factors = []
+        while stack:
+            x = stack.pop()
+            for i in range(len(stack)):
+                y = stack[i]
                 p = multiply(x, y)
                 if p == ONE:
-                    del variables[i]
+                    del stack[i]
                     break
             else:
                 factors.append(x)
         # fully resolved?
-        if not factors or constant.value == 0:
+        if not factors:
             return constant
         if constant.value != 1:
             factors.append(constant)
@@ -522,6 +466,109 @@ class Product(NumericExpression):
 
     def __str__(self) -> str:
         return f'({" * ".join(map(str, self.factors))})'
+
+
+@frozen
+class Power(NumericExpression):
+    base: NumericExpression
+    exponent: NumericExpression
+
+    @property
+    def type(self) -> ExpressionType:
+        return ExpressionType.POWER
+
+    @property
+    def is_int(self) -> bool:
+        if not self.exponent.is_int or not self.exponent.is_literal:
+            return False
+        assert isinstance(self.exponent, NumberLiteral)
+        return self.base.is_int and self.exponent.value >= 0
+
+    @property
+    def min_value(self) -> NumericExpression:
+        return Power(self.base.min_value, self.exponent.min_value).solve()
+
+    @property
+    def max_value(self) -> NumericExpression:
+        return Power(self.base.max_value, self.exponent.max_value).solve()
+
+    @property
+    def exclude_min(self) -> bool:
+        return self.base.exclude_min or self.exponent.exclude_min
+
+    @property
+    def exclude_max(self) -> bool:
+        return self.base.exclude_max or self.exponent.exclude_max
+
+    @property
+    def minus_sign(self) -> bool:
+        return False
+
+    def solve(self, **symbols: Mapping[str, NumericExpression]) -> NumericExpression:
+        base = self.base.solve(**symbols)
+        exponent = self.exponent.solve(**symbols)
+
+        if base.is_literal:
+            assert isinstance(base, NumberLiteral)
+            if base.value == 1:
+                return base
+            if exponent.is_literal:
+                assert isinstance(exponent, NumberLiteral)
+                return _literal(base.value ** exponent.value)
+
+        elif exponent.is_literal:
+            assert isinstance(exponent, NumberLiteral)
+            if exponent.value == 0:
+                return ONE
+            if exponent.value == 1:
+                return base
+
+        elif base.is_power:
+            assert isinstance(base, Power)
+            exponent = multiply(base.exponent, exponent)
+            base = base.base
+            return Power(base, exponent)
+
+        return self if base is self.base and exponent is self.exponent else Power(base, exponent)
+
+    def __str__(self) -> str:
+        return f'({self.base} ** {self.exponent})'
+
+
+def _literal(x: Union[int, float, NumberLiteral]) -> NumberLiteral:
+    return x if isinstance(x, NumberLiteral) else NumberLiteral(x)
+
+
+def negative(x: NumericExpression) -> NumericExpression:
+    # does not use other functions to avoid loops
+    if x.is_literal:
+        assert isinstance(x, NumberLiteral)
+        return NumberLiteral(-x.value)
+    if x.is_symbol:
+        assert isinstance(x, Symbol)
+        return evolve(
+            x,
+            minus_sign=(not x.minus_sign),
+            min_value=negative(x.max_value),
+            max_value=negative(x.min_value),
+            exclude_min=x.exclude_max,
+            exclude_max=x.exclude_min,
+        )
+    if x.is_sum:
+        assert isinstance(x, Sum)
+        return Sum(map(negative, x.parts))
+    return Product(x, MINUS_ONE)
+
+
+def inverse(x: NumericExpression) -> NumericExpression:
+    # does not use other functions to avoid loops
+    if x.is_literal:
+        assert isinstance(x, NumberLiteral)
+        return NumberLiteral(1 / x.value)
+    if x.is_power:
+        assert isinstance(x, Power)
+        return Power(x.base, negative(x.exponent))
+    return Power(x, MINUS_ONE)
 
 
 def add(a: NumericExpression, b: NumericExpression) -> NumericExpression:
@@ -544,7 +591,7 @@ def add(a: NumericExpression, b: NumericExpression) -> NumericExpression:
     elif a.is_symbol and b.is_symbol:
         assert isinstance(a, Symbol)
         assert isinstance(b, Symbol)
-        if a.name == b.name and a.exponent == b.exponent and a.minus_sign != b.minus_sign:
+        if a.name == b.name and a.minus_sign != b.minus_sign:
             return ZERO
     elif a.is_sum:
         assert isinstance(a, Sum)
@@ -563,11 +610,11 @@ def multiply(a: NumericExpression, b: NumericExpression) -> NumericExpression:
         if a.value == 1:
             return b
         if a.value == -1:
-            return b.negative()
+            return negative(b)
         if b.is_literal:
             assert isinstance(b, NumberLiteral)
             return NumberLiteral(a.value * b.value)
-        return Product((a, b))
+        return Product((b, a))
 
     if b.is_literal:
         assert isinstance(b, NumberLiteral)
@@ -576,27 +623,138 @@ def multiply(a: NumericExpression, b: NumericExpression) -> NumericExpression:
         if b.value == 1:
             return a
         if b.value == -1:
-            return a.negative()
-    elif a.is_symbol and b.is_symbol:
+            return negative(a)
+        return Product((a, b))
+
+    if a.is_product:
+        assert isinstance(a, Product)
+        return a.multiply(b)
+    if b.is_product:
+        assert isinstance(b, Product)
+        return b.multiply(a)
+
+    e1 = ONE
+    e2 = ONE
+    if a.is_power:
+        assert isinstance(a, Power)
+        e1 = a.exponent
+        a = a.base
+    if b.is_power:
+        assert isinstance(b, Power)
+        e2 = b.exponent
+        b = b.base
+
+    if a == b:
+        return Power(a, add(e1, e2)).solve()
+    if a.is_symbol and b.is_symbol:
         assert isinstance(a, Symbol)
         assert isinstance(b, Symbol)
         if a.name == b.name:
-            e: NumberLiteral = add(a.exponent, b.exponent)
-            if e.is_literal and e.value == 0:
-                return ONE
-            return Symbol(
+            x = Symbol(
                 name=a.name,
-                exponent=e,
                 minus_sign=(a.minus_sign ^ b.minus_sign),
                 min_value=multiply(a.min_value, b.min_value),
                 max_value=multiply(a.max_value, b.max_value),
                 exclude_min=(a.exclude_min or b.exclude_min),
                 exclude_max=(a.exclude_max or b.exclude_max),
             )
-    elif a.is_product:
-        assert isinstance(a, Product)
-        return a.multiply(b)
-    elif b.is_product:
-        assert isinstance(b, Product)
-        return b.multiply(a)
-    return Product((a, b))
+            return Power(x, add(e1, e2)).solve()
+    p = Product((a, b))
+    return Power(p, e1) if e1 == e2 and e1 != ONE else p
+
+
+################################################################################
+# Interface
+################################################################################
+
+
+@typechecked
+def solve_constraints(conditions: Iterable[HplExpression]) -> List[HplExpression]:
+    # assumes that `conditions` is a list of expressions in canonical/simple form
+    # e.g., 'x > y + 20', or 'z = w'
+    new_conditions = []
+    symbols = {}
+    for phi in conditions:
+        assert phi.can_be_bool, str(phi)
+        if phi.is_operator:
+            if isinstance(phi, HplBinaryOperator):
+                assert not phi.operator.is_implies, str(phi)
+                assert not phi.operator.is_iff, str(phi)
+                if phi.operator.is_and:
+                    new_conditions.extend(solve_constraints((phi.operand1, phi.operand2)))
+                elif phi.operator.is_or:
+                    a = solve_constraints((phi.operand1,))
+                    b = solve_constraints((phi.operand2,))
+                    new_conditions.append(Or(a, b))
+                else:
+                    if not phi.operator.is_comparison and not phi.operator.is_inclusion:
+                        raise TypeError(f'unknown expression type: {phi}')
+                    if phi.operator.is_inequality:
+                        continue
+
+                    a = _convert_arithmetic(phi.operand1)
+                    b = _convert_arithmetic(phi.operand2)
+                    if not a.is_symbol:
+                        continue
+                    assert isinstance(a, Symbol)
+
+                    value = symbols.get(a.name)
+                    if value is None:
+                        value = a
+                        symbols[a.name] = a
+                    if phi.operator.is_equality:
+                        # TODO aliases etc
+                        if not value.is_symbol or value.name != a.name:
+                            raise ContradictionError(str(phi))
+                        symbols[a.name] = b
+                    elif phi.operator.is_less_than:
+                        if value.is_symbol:
+                            value = evolve(value, max_value=b, exclude_max=True)
+                            symbols[a.name] = value
+                    elif phi.operator.is_less_than_eq:
+                        if value.is_symbol:
+                            value = evolve(value, max_value=b, exclude_max=False)
+                            symbols[a.name] = value
+                    elif phi.operator.is_greater_than:
+                        if value.is_symbol:
+                            value = evolve(value, min_value=b, exclude_min=True)
+                            symbols[a.name] = value
+                    elif phi.operator.is_greater_than_eq:
+                        if value.is_symbol:
+                            value = evolve(value, min_value=b, exclude_min=False)
+                            symbols[a.name] = value
+            else:
+                assert isinstance(phi, HplUnaryOperator), str(phi)
+                assert phi.operator.is_not, str(phi)
+                new_conditions.append(Not(solve_constraints((phi.operand))))
+    return new_conditions
+
+
+def _convert_arithmetic(expr: HplExpression) -> NumericExpression:
+    assert expr.can_be_number, str(expr)
+    if isinstance(expr, HplBinaryOperator):
+        a = _convert_arithmetic(expr.operand1)
+        b = _convert_arithmetic(expr.operand2)
+        if expr.operator.is_plus:
+            return Sum((a, b))
+        if expr.operator.is_minus:
+            return Sum((a, negative(b)))
+        if expr.operator.is_times:
+            return Product((a, b))
+        if expr.operator.is_division:
+            return Product(a, inverse(b))
+        if expr.operator.is_power:
+            return Power(a, b)
+        raise TypeError(f'unknown arithmetic operator: {expr}')
+    elif isinstance(expr, HplUnaryOperator):
+        assert expr.operator.is_minus, str(expr)
+        a = _convert_arithmetic(expr.operand)
+        return negative(a)
+    elif isinstance(expr, HplValue):
+        if expr.is_literal:
+            return NumberLiteral(expr.value)
+        if expr.is_variable:
+            return Symbol(expr.token)
+    elif isinstance(expr, HplDataAccess):
+        return Symbol(str(expr))
+    raise TypeError(f'unknown arithmetic expression: {expr}')
