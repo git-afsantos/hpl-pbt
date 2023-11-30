@@ -15,6 +15,8 @@ from hpl.ast import (
     HplBinaryOperator,
     HplDataAccess,
     HplExpression,
+    HplFunctionCall,
+    HplQuantifier,
     HplUnaryOperator,
     HplValue,
     Not,
@@ -673,7 +675,7 @@ def solve_constraints(conditions: Iterable[HplExpression]) -> List[HplExpression
     # assumes that `conditions` is a list of expressions in canonical/simple form
     # e.g., 'x > y + 20', or 'z = w'
     new_conditions = []
-    symbols = {}
+    symbols = _build_symbol_table(conditions)
     for phi in conditions:
         assert phi.can_be_bool, str(phi)
         if phi.is_operator:
@@ -728,6 +730,40 @@ def solve_constraints(conditions: Iterable[HplExpression]) -> List[HplExpression
                 assert phi.operator.is_not, str(phi)
                 new_conditions.append(Not(solve_constraints((phi.operand))))
     return new_conditions
+
+
+def _build_symbol_table(conditions: Iterable[HplExpression]) -> Mapping[str, Symbol]:
+    symbols = {}
+    for phi in conditions:
+        _find_symbols(phi, symbols)
+    return symbols
+
+
+def _find_symbols(expr: HplExpression, symbols: Mapping[str, Symbol]):
+    if expr.is_operator:
+        if isinstance(expr, HplBinaryOperator):
+            _find_symbols(expr.operand1, symbols)
+            _find_symbols(expr.operand2, symbols)
+        elif isinstance(expr, HplUnaryOperator):
+            _find_symbols(expr.operand, symbols)
+    elif expr.is_quantifier:
+        assert isinstance(expr, HplQuantifier)
+        _find_symbols(expr.condition, symbols)
+    elif not expr.can_be_number:
+        return
+
+    if expr.is_function_call:
+        assert isinstance(expr, HplFunctionCall)
+        for arg in expr.arguments:
+            _find_symbols(arg, symbols)
+    elif expr.is_value:
+        assert isinstance(expr, HplValue)
+        if expr.is_variable:
+            symbols[expr.token] = Symbol(expr.token)
+    elif expr.is_accessor:
+        assert isinstance(expr, HplDataAccess)
+        name = str(expr)
+        symbols[name] = Symbol(name)
 
 
 def _convert_arithmetic(expr: HplExpression) -> NumericExpression:
