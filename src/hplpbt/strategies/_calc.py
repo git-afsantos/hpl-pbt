@@ -706,7 +706,7 @@ class ConditionTransformer:
             phi = self._transform(phi)
         return phi
 
-    def _transform(self, phi: HplExpression) -> HplExpression:  # FIXME
+    def _transform(self, phi: HplExpression) -> HplExpression:
         assert phi.can_be_bool, str(phi)
         if phi.is_operator:
             if isinstance(phi, HplBinaryOperator):
@@ -717,11 +717,11 @@ class ConditionTransformer:
                     b = self._transform(phi.operand2)
                     return phi.but(operand1=a, operand2=b)
                 else:
-                    return _transform_atomic_condition(phi, symbols)
+                    return self._transform_atomic(phi)
             else:
                 assert isinstance(phi, HplUnaryOperator), str(phi)
                 assert phi.operator.is_not, str(phi)
-                new_conditions.append(Not(solve_constraints((phi.operand))))
+                return phi.but(operand=self._transform(phi.operand))
         return phi
 
     def _transform_atomic(self, phi: HplBinaryOperator) -> HplExpression:
@@ -732,22 +732,19 @@ class ConditionTransformer:
             return phi
 
         if phi.operator.is_inclusion:
-            b = _transform_expression(phi.operand2)
-            return phi.but(operand2=b)
+            # b = _transform_expression(phi.operand2)
+            # return phi.but(operand2=b)
+            return phi
 
         if phi.operator.is_inequality:
-            b = _transform_expression(phi.operand2)
-            return phi.but(operand2=b)
+            # b = _transform_expression(phi.operand2)
+            # return phi.but(operand2=b)
+            return phi
 
-        a = _convert_arithmetic(phi.operand1)
+        if not phi.operand1.can_be_number:
+            return phi
+
         b = _convert_arithmetic(phi.operand2)
-        if not a.is_symbol:
-            continue
-        assert isinstance(a, Symbol)
-        value = self.symbols.get(a.name)
-        if value is None:
-            value = a
-            self.symbols[a.name] = a
         if phi.operator.is_equality:
             # TODO aliases etc
             if not value.is_symbol or value.name != a.name:
