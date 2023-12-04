@@ -9,19 +9,23 @@ from typing import Final, Iterable, List, Mapping, Set, Union
 
 from enum import auto, Enum
 
-from attrs import evolve, field, frozen
+from attrs import define, evolve, field, frozen
 from attrs.validators import deep_iterable, instance_of, min_len
 from hpl.ast import (
     HplBinaryOperator,
     HplDataAccess,
     HplExpression,
     HplFunctionCall,
+    HplLiteral,
     HplQuantifier,
+    HplRange,
+    HplSet,
     HplUnaryOperator,
     HplValue,
+    HplVarReference,
     Not,
-    Or,
 )
+from hpl.parser import parse_expresion
 from typeguard import typechecked
 
 from hplpbt.errors import ContradictionError
@@ -674,96 +678,165 @@ def multiply(a: NumericExpression, b: NumericExpression) -> NumericExpression:
 def solve_constraints(conditions: Iterable[HplExpression]) -> List[HplExpression]:
     # assumes that `conditions` is a list of expressions in canonical/simple form
     # e.g., 'x > y + 20', or 'z = w'
-    new_conditions = []
     symbols = _build_symbol_table(conditions)
-    for phi in conditions:
+    return [_transform_condition(phi, symbols) for phi in conditions]
+
+
+@define
+class ConditionTransformer:
+    symbols: Mapping[str, NumericExpression] = field(factory=dict)
+    progress: bool = False
+
+    def transform_all(self, conditions: Iterable[HplExpression]) -> List[HplExpression]:
+        self.symbols = {}
+        for phi in conditions:
+            self._find_symbols(phi)
+        self.progress = True
+        while self.progress:
+            self.progress = False
+            conditions = list(map(self._transform, conditions))
+        return conditions
+
+    def transform(self, phi: HplExpression) -> HplExpression:
+        self.symbols = {}
+        self._find_symbols(phi)
+        self.progress = True
+        while self.progress:
+            self.progress = False
+            phi = self._transform(phi)
+        return phi
+
+    def _transform(self, phi: HplExpression) -> HplExpression:  # FIXME
         assert phi.can_be_bool, str(phi)
         if phi.is_operator:
             if isinstance(phi, HplBinaryOperator):
                 assert not phi.operator.is_implies, str(phi)
                 assert not phi.operator.is_iff, str(phi)
-                if phi.operator.is_and:
-                    new_conditions.extend(solve_constraints((phi.operand1, phi.operand2)))
-                elif phi.operator.is_or:
-                    a = solve_constraints((phi.operand1,))
-                    b = solve_constraints((phi.operand2,))
-                    new_conditions.append(Or(a, b))
+                if phi.operator.is_and or phi.operator.is_or:
+                    a = self._transform(phi.operand1)
+                    b = self._transform(phi.operand2)
+                    return phi.but(operand1=a, operand2=b)
                 else:
-                    if not phi.operator.is_comparison and not phi.operator.is_inclusion:
-                        raise TypeError(f'unknown expression type: {phi}')
-                    if phi.operator.is_inequality:
-                        continue
-
-                    a = _convert_arithmetic(phi.operand1)
-                    b = _convert_arithmetic(phi.operand2)
-                    if not a.is_symbol:
-                        continue
-                    assert isinstance(a, Symbol)
-
-                    value = symbols.get(a.name)
-                    if value is None:
-                        value = a
-                        symbols[a.name] = a
-                    if phi.operator.is_equality:
-                        # TODO aliases etc
-                        if not value.is_symbol or value.name != a.name:
-                            raise ContradictionError(str(phi))
-                        symbols[a.name] = b
-                    elif phi.operator.is_less_than:
-                        if value.is_symbol:
-                            value = evolve(value, max_value=b, exclude_max=True)
-                            symbols[a.name] = value
-                    elif phi.operator.is_less_than_eq:
-                        if value.is_symbol:
-                            value = evolve(value, max_value=b, exclude_max=False)
-                            symbols[a.name] = value
-                    elif phi.operator.is_greater_than:
-                        if value.is_symbol:
-                            value = evolve(value, min_value=b, exclude_min=True)
-                            symbols[a.name] = value
-                    elif phi.operator.is_greater_than_eq:
-                        if value.is_symbol:
-                            value = evolve(value, min_value=b, exclude_min=False)
-                            symbols[a.name] = value
+                    return _transform_atomic_condition(phi, symbols)
             else:
                 assert isinstance(phi, HplUnaryOperator), str(phi)
                 assert phi.operator.is_not, str(phi)
                 new_conditions.append(Not(solve_constraints((phi.operand))))
-    return new_conditions
+        return phi
+
+    def _transform_atomic(self, phi: HplBinaryOperator) -> HplExpression:
+        assert phi.operator.is_comparison or phi.operator.is_inclusion, str(phi)
+        # is it in canonical form?
+        x = self.symbols.get(_symbol_name(phi.operand1))
+        if not x:
+            return phi
+
+        if phi.operator.is_inclusion:
+            b = _transform_expression(phi.operand2)
+            return phi.but(operand2=b)
+
+        if phi.operator.is_inequality:
+            b = _transform_expression(phi.operand2)
+            return phi.but(operand2=b)
+
+        a = _convert_arithmetic(phi.operand1)
+        b = _convert_arithmetic(phi.operand2)
+        if not a.is_symbol:
+            continue
+        assert isinstance(a, Symbol)
+        value = self.symbols.get(a.name)
+        if value is None:
+            value = a
+            self.symbols[a.name] = a
+        if phi.operator.is_equality:
+            # TODO aliases etc
+            if not value.is_symbol or value.name != a.name:
+                raise ContradictionError(str(phi))
+            self.symbols[a.name] = b
+        elif phi.operator.is_less_than:
+            if value.is_symbol:
+                value = evolve(value, max_value=b, exclude_max=True)
+                self.symbols[a.name] = value
+        elif phi.operator.is_less_than_eq:
+            if value.is_symbol:
+                value = evolve(value, max_value=b, exclude_max=False)
+                self.symbols[a.name] = value
+        elif phi.operator.is_greater_than:
+            if value.is_symbol:
+                value = evolve(value, min_value=b, exclude_min=True)
+                self.symbols[a.name] = value
+        elif phi.operator.is_greater_than_eq:
+            if value.is_symbol:
+                value = evolve(value, min_value=b, exclude_min=False)
+                self.symbols[a.name] = value
+        return phi
+
+    def _find_symbols(self, expr: HplExpression):
+        if expr.is_operator:
+            if isinstance(expr, HplBinaryOperator):
+                self._find_symbols(expr.operand1)
+                self._find_symbols(expr.operand2)
+            elif isinstance(expr, HplUnaryOperator):
+                self._find_symbols(expr.operand)
+        elif expr.is_quantifier:
+            assert isinstance(expr, HplQuantifier)
+            self._find_symbols(expr.condition)
+        elif not expr.can_be_number:
+            return
+
+        if expr.is_function_call:
+            assert isinstance(expr, HplFunctionCall)
+            for arg in expr.arguments:
+                self._find_symbols(arg)
+        else:
+            name = _symbol_name(expr)
+            if name:
+                self.symbols[name] = Symbol(name)
 
 
-def _build_symbol_table(conditions: Iterable[HplExpression]) -> Mapping[str, Symbol]:
-    symbols = {}
-    for phi in conditions:
-        _find_symbols(phi, symbols)
-    return symbols
-
-
-def _find_symbols(expr: HplExpression, symbols: Mapping[str, Symbol]):
-    if expr.is_operator:
-        if isinstance(expr, HplBinaryOperator):
-            _find_symbols(expr.operand1, symbols)
-            _find_symbols(expr.operand2, symbols)
-        elif isinstance(expr, HplUnaryOperator):
-            _find_symbols(expr.operand, symbols)
-    elif expr.is_quantifier:
-        assert isinstance(expr, HplQuantifier)
-        _find_symbols(expr.condition, symbols)
-    elif not expr.can_be_number:
-        return
-
-    if expr.is_function_call:
-        assert isinstance(expr, HplFunctionCall)
-        for arg in expr.arguments:
-            _find_symbols(arg, symbols)
-    elif expr.is_value:
+def _symbol_name(expr: HplExpression) -> str:
+    if expr.is_value:
         assert isinstance(expr, HplValue)
-        if expr.is_variable:
-            symbols[expr.token] = Symbol(expr.token)
-    elif expr.is_accessor:
+        return expr.token if expr.is_variable else ''
+    if expr.is_accessor:
         assert isinstance(expr, HplDataAccess)
-        name = str(expr)
-        symbols[name] = Symbol(name)
+        return str(expr)
+    return ''
+
+
+def _transform_expression(
+    expr: HplExpression,
+    symbols: Mapping[str, NumericExpression],
+) -> HplExpression:
+    if expr.is_value:
+        assert isinstance(expr, HplValue)
+        if expr.is_set:
+            assert isinstance(expr, HplSet)
+            new_values = set()
+            changed = False
+            for element in expr.values:
+                new_element = _transform_expression(element, symbols)
+                changed = changed or (new_element is not element)
+                new_values.add(new_element)
+            return expr if not changed else expr.but(values=new_values)
+        if expr.is_range:
+            assert isinstance(expr, HplRange)
+            a = _transform_expression(expr.min_value, symbols)
+            b = _transform_expression(expr.max_value, symbols)
+            return expr.but(min_value=a, max_value=b)
+        if expr.is_variable:
+            assert isinstance(expr, HplVarReference)
+            x = symbols.get(expr.token)
+            if x.is_symbol:
+                return expr
+            x = x.solve(**symbols)
+            return _number_to_hpl(x)
+        return expr
+    if expr.is_function_call:
+        return expr  # FIXME
+    x = _convert_arithmetic(expr)
+    x = x.solve(**symbols)
+    return _number_to_hpl(x)
 
 
 def _convert_arithmetic(expr: HplExpression) -> NumericExpression:
@@ -794,3 +867,25 @@ def _convert_arithmetic(expr: HplExpression) -> NumericExpression:
     elif isinstance(expr, HplDataAccess):
         return Symbol(str(expr))
     raise TypeError(f'unknown arithmetic expression: {expr}')
+
+
+def _number_to_hpl(expr: NumericExpression) -> HplExpression:
+    return parse_expresion(str(expr))
+    # if expr.is_literal:
+    #     assert isinstance(expr, NumberLiteral)
+    #     return HplLiteral(str(expr.value), expr.value)
+    # if expr.is_symbol:
+    #     assert isinstance(expr, Symbol)
+    #     if name.startswith('@'):
+    #         return HplVarReference(expr.name)
+    # if expr.is_sum:
+    #     assert isinstance(expr, Sum)
+    #     return
+    # if expr.is_product:
+    #     assert isinstance(expr, Product)
+    #     return
+    # if expr.is_power:
+    #     assert isinstance(expr, Power)
+    #     return
+    # if expr.is_function_call:
+    #     return HplLiteral('False', False)
