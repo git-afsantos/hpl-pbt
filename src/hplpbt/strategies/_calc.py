@@ -689,47 +689,74 @@ def solve_constraints(conditions: Iterable[HplExpression]) -> List[HplExpression
 @define
 class ConditionTransformer:
     symbols: Mapping[str, NumericExpression] = field(factory=dict)
-    progress: bool = False
-    _equalities: List[HplExpression] = field(factory=list)
-    _disjunctions: List[HplExpression] = field(factory=list)
-    _others: List[HplExpression] = field(factory=list)
-    _final_conditions: List[HplExpression] = field(factory=list)
+    equalities: List[HplBinaryOperator] = field(factory=list)
+    disjunctions: List[HplBinaryOperator] = field(factory=list)
+    others: List[HplExpression] = field(factory=list)
 
     def transform_all(self, conditions: Iterable[HplExpression]) -> List[HplExpression]:
         self._sort_conditions(conditions)
         self.symbols = {}
-        self._final_conditions = []
-        self._process_equalities()
-        self._process_other_conditions()
-        self._process_disjunctions()
-        self.progress = True
-        while self.progress:
-            self.progress = False
-            conditions = list(map(self._transform, conditions))
-        return self._final_conditions
+        new_conditions = self._process_equalities()
+        new_conditions.extend(self._process_other_conditions())
+        new_conditions.extend(self._process_disjunctions())
+        return new_conditions
 
-    def _process_equalities(self):
-        while self._equalities:
-            phi = self._equalities.pop()
-            assert isinstance(phi, HplBinaryOperator), str(phi)
-            assert phi.operator.is_equality, str(phi)
+    def _process_equalities(self) -> List[HplExpression]:
+        conditions = []
+        progress = True
+        while progress:
+            progress = False
+            stack = []
+            while self.equalities:
+                phi = self.equalities.pop()
+                a = phi.operand1
+                b = phi.operand2
+                name = _symbol_name(a)
+                x = self.symbols.get(name)
+                y = _convert_arithmetic(b).solve(**self.symbols)
 
-            # skip processing if not handling numbers
-            b = phi.operand2
-            if not b.can_be_number:
-                self._final_conditions.append(phi)
-                continue
+                # does the LHS already have a value?
+                if x is None:
+                    x = y
+                    self.symbols[name] = y
 
-            # skip processing if not in canonical form
-            name = _symbol_name(phi.operand1)
-            if not name:
-                self._final_conditions.append(phi)
-                continue
+                # is the RHS fully resolved?
+                if y.is_literal:
+                    progress = True
+                    # flag contradictions
+                    if x.is_literal and x.value != y.value:
+                        raise ContradictionError(f'{name} = {x} and {name} = {y}')
+                    # update symbol table
+                    self.symbols[name] = y
+                    # push to final conditions
+                    conditions.append(phi)
+                    continue
 
-            # try to handle already defined symbols
-            x = self.symbols.get(name)
-            if x:
-                pass
+                # did we go around in a loop?
+                if y == x:
+                    progress = True
+                    continue
+
+                # can we rewrite?
+                if x.is_literal:
+                    # try to move literal from LHS to RHS
+                    # try to move some symbol from RHS to LHS
+                    if y.is_sum:
+                        pass
+                    elif y.is_product:
+                        pass
+                    elif y.is_power:
+                        pass
+
+                # deal with it later
+                stack.append(phi)
+            self.equalities = stack
+        # append whatever we were unable to resolve
+        conditions.extend(self.equalities)
+        self.equalities = []
+        return conditions
+
+
 
     def _process_other_conditions(self):
         while self._others:
@@ -836,9 +863,9 @@ class ConditionTransformer:
 
     def _sort_conditions(self, conditions: Iterable[HplExpression]):
         stack = list(conditions)
-        self._equalities = []
-        self._disjunctions = []
-        self._others = []
+        self.equalities = []
+        self.disjunctions = []
+        self.others = []
         while stack:
             phi = stack.pop()
             assert phi.can_be_bool, str(phi)
@@ -864,11 +891,18 @@ class ConditionTransformer:
                 assert not phi.operator.is_implies, str(phi)
                 assert not phi.operator.is_iff, str(phi)
                 if phi.operator.is_or:
-                    self._disjunctions.append(phi)
+                    self.disjunctions.append(phi)
                 elif phi.operator.is_equality:
-                    self._equalities.append(phi)
+                    # skip processing if not handling numbers
+                    # skip processing if not in canonical form
+                    if not phi.operand2.can_be_number:
+                        self.others.append(phi)
+                    elif not _symbol_name(phi.operand1):
+                        self.others.append(phi)
+                    else:
+                        self.equalities.append(phi)
                 else:
-                    self._others.append(phi)
+                    self.others.append(phi)
             elif isinstance(phi, HplUnaryOperator):
                 assert phi.operator.is_not, str(phi)
                 psi = phi.operand
@@ -879,13 +913,21 @@ class ConditionTransformer:
                     if psi.operator.is_and:
                         a = Not(psi.operand1)
                         b = Not(psi.operand2)
-                        self._disjunctions.append(Or(a, b))
+                        self.disjunctions.append(Or(a, b))
                     elif psi.operator.is_inequality:
-                        self._equalities.append(_eq(psi.operand1, psi.operand2))
+                        psi = _eq(psi.operand1, psi.operand2)
+                        # skip processing if not handling numbers
+                        # skip processing if not in canonical form
+                        if not psi.operand2.can_be_number:
+                            self.others.append(psi)
+                        elif not _symbol_name(psi.operand1):
+                            self.others.append(psi)
+                        else:
+                            self.equalities.append(psi)
                     else:
-                        self._others.append(phi)
+                        self.others.append(phi)
             else:
-                self._others.append(phi)
+                self.others.append(phi)
 
 
 def _symbol_name(expr: HplExpression) -> str:
