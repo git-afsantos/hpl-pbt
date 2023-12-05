@@ -12,20 +12,24 @@ from enum import auto, Enum
 from attrs import define, evolve, field, frozen
 from attrs.validators import deep_iterable, instance_of, min_len
 from hpl.ast import (
+    And,
+    BuiltinBinaryOperator,
+    FALSE,
     HplBinaryOperator,
     HplDataAccess,
     HplExpression,
     HplFunctionCall,
-    HplLiteral,
     HplQuantifier,
     HplRange,
     HplSet,
     HplUnaryOperator,
     HplValue,
     HplVarReference,
+    Or,
     Not,
 )
 from hpl.parser import parse_expresion
+from hpl.rewrite import simplify, split_and
 from typeguard import typechecked
 
 from hplpbt.errors import ContradictionError
@@ -686,16 +690,56 @@ def solve_constraints(conditions: Iterable[HplExpression]) -> List[HplExpression
 class ConditionTransformer:
     symbols: Mapping[str, NumericExpression] = field(factory=dict)
     progress: bool = False
+    _equalities: List[HplExpression] = field(factory=list)
+    _disjunctions: List[HplExpression] = field(factory=list)
+    _others: List[HplExpression] = field(factory=list)
+    _final_conditions: List[HplExpression] = field(factory=list)
 
     def transform_all(self, conditions: Iterable[HplExpression]) -> List[HplExpression]:
+        self._sort_conditions(conditions)
         self.symbols = {}
-        for phi in conditions:
-            self._find_symbols(phi)
+        self._final_conditions = []
+        self._process_equalities()
+        self._process_other_conditions()
+        self._process_disjunctions()
         self.progress = True
         while self.progress:
             self.progress = False
             conditions = list(map(self._transform, conditions))
-        return conditions
+        return self._final_conditions
+
+    def _process_equalities(self):
+        while self._equalities:
+            phi = self._equalities.pop()
+            assert isinstance(phi, HplBinaryOperator), str(phi)
+            assert phi.operator.is_equality, str(phi)
+
+            # skip processing if not handling numbers
+            b = phi.operand2
+            if not b.can_be_number:
+                self._final_conditions.append(phi)
+                continue
+
+            # skip processing if not in canonical form
+            name = _symbol_name(phi.operand1)
+            if not name:
+                self._final_conditions.append(phi)
+                continue
+
+            # try to handle already defined symbols
+            x = self.symbols.get(name)
+            if x:
+                pass
+
+    def _process_other_conditions(self):
+        while self._others:
+            phi = self._others.pop()
+
+    def _process_disjunctions(self):
+        while self._disjunctions:
+            phi = self._disjunctions.pop()
+            assert isinstance(phi, HplBinaryOperator), str(phi)
+            assert phi.operator.is_or, str(phi)
 
     def transform(self, phi: HplExpression) -> HplExpression:
         self.symbols = {}
@@ -789,6 +833,59 @@ class ConditionTransformer:
             name = _symbol_name(expr)
             if name:
                 self.symbols[name] = Symbol(name)
+
+    def _sort_conditions(self, conditions: Iterable[HplExpression]):
+        stack = list(conditions)
+        self._equalities = []
+        self._disjunctions = []
+        self._others = []
+        while stack:
+            phi = stack.pop()
+            assert phi.can_be_bool, str(phi)
+            # pre-processing
+            if isinstance(phi, HplBinaryOperator):
+                if phi.operator.is_inclusion:
+                    phi = _in_to_and_or(phi)
+            elif isinstance(phi, HplUnaryOperator):
+                assert phi.operator.is_not, str(phi)
+                if isinstance(phi.operand, HplBinaryOperator):
+                    if phi.operand.operator.is_inclusion:
+                        phi = Not(_in_to_and_or(phi.operand))
+            # splits
+            parts = split_and(phi)
+            if len(parts) > 1:
+                stack.extend(parts)
+                continue
+            # boxing
+            assert len(parts) == 1
+            phi = parts[0]
+            if isinstance(phi, HplBinaryOperator):
+                assert not phi.operator.is_and, str(phi)
+                assert not phi.operator.is_implies, str(phi)
+                assert not phi.operator.is_iff, str(phi)
+                if phi.operator.is_or:
+                    self._disjunctions.append(phi)
+                elif phi.operator.is_equality:
+                    self._equalities.append(phi)
+                else:
+                    self._others.append(phi)
+            elif isinstance(phi, HplUnaryOperator):
+                assert phi.operator.is_not, str(phi)
+                psi = phi.operand
+                if isinstance(psi, HplBinaryOperator):
+                    assert not psi.operator.is_or, str(phi)
+                    assert not psi.operator.is_implies, str(phi)
+                    assert not psi.operator.is_iff, str(phi)
+                    if psi.operator.is_and:
+                        a = Not(psi.operand1)
+                        b = Not(psi.operand2)
+                        self._disjunctions.append(Or(a, b))
+                    elif psi.operator.is_inequality:
+                        self._equalities.append(_eq(psi.operand1, psi.operand2))
+                    else:
+                        self._others.append(phi)
+            else:
+                self._others.append(phi)
 
 
 def _symbol_name(expr: HplExpression) -> str:
@@ -886,3 +983,45 @@ def _number_to_hpl(expr: NumericExpression) -> HplExpression:
     #     return
     # if expr.is_function_call:
     #     return HplLiteral('False', False)
+
+
+def _eq(a: HplExpression, b: HplExpression) -> HplBinaryOperator:
+    return HplBinaryOperator(BuiltinBinaryOperator.EQ, a, b)
+
+
+def _lt(a: HplExpression, b: HplExpression) -> HplBinaryOperator:
+    return HplBinaryOperator(BuiltinBinaryOperator.LT, a, b)
+
+
+def _lte(a: HplExpression, b: HplExpression) -> HplBinaryOperator:
+    return HplBinaryOperator(BuiltinBinaryOperator.LTE, a, b)
+
+
+def _gt(a: HplExpression, b: HplExpression) -> HplBinaryOperator:
+    return HplBinaryOperator(BuiltinBinaryOperator.GT, a, b)
+
+
+def _gte(a: HplExpression, b: HplExpression) -> HplBinaryOperator:
+    return HplBinaryOperator(BuiltinBinaryOperator.GTE, a, b)
+
+
+def _in_to_and_or(phi: HplBinaryOperator) -> HplBinaryOperator:
+    assert phi.operator.is_inclusion, str(phi)
+    a = phi.operand1
+    domain = phi.operand2
+    if isinstance(domain, HplSet):
+        psi = FALSE
+        for b in domain.values:
+            psi = Or(psi, _eq(a, b))
+        return psi
+    if isinstance(domain, HplRange):
+        if domain.exclude_min:
+            p = _gt(a, domain.min_value)
+        else:
+            p = _gte(a, domain.min_value)
+        if domain.exclude_max:
+            q = _lt(a, domain.max_value)
+        else:
+            q = _lte(a, domain.max_value)
+        return And(p, q)
+    return phi
