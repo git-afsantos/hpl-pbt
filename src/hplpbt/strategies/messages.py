@@ -29,6 +29,7 @@ from hplpbt.strategies.data import (
 # from hpl.types import TypeToken
 from typeguard import check_type, typechecked
 
+from hplpbt.strategies._calc import solve_constraints
 from hplpbt.strategies._codegen import sort_statements
 from hplpbt.strategies.ast import (
     Assignment,
@@ -401,6 +402,8 @@ class SingleMessageStrategyBuilder:
             raise ContradictionError(f'unsatisfiable precondition for {name}')
         # break the first level of conjunctions
         conditions = split_and(pre.condition)
+        # try to simplify further
+        conditions = solve_constraints(conditions)
         # replace references to user-input variables
         for phi in conditions:
             refs = phi.external_references()
