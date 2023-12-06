@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Final, Iterable, List, Mapping, Set, Tuple, Union
+from typing import Final, Iterable, List, Mapping, Set, Union
 
 from enum import auto, Enum
 
@@ -24,12 +24,12 @@ from hpl.ast import (
     HplSet,
     HplUnaryOperator,
     HplValue,
-    HplVarReference,
     Or,
     Not,
+    TRUE,
 )
 from hpl.parser import parse_expresion
-from hpl.rewrite import simplify, split_and
+from hpl.rewrite import split_and
 from typeguard import typechecked
 
 from hplpbt.errors import ContradictionError
@@ -682,23 +682,30 @@ def multiply(a: NumericExpression, b: NumericExpression) -> NumericExpression:
 def solve_constraints(conditions: Iterable[HplExpression]) -> List[HplExpression]:
     # assumes that `conditions` is a list of expressions in canonical/simple form
     # e.g., 'x > y + 20', or 'z = w'
-    symbols = _build_symbol_table(conditions)
-    return [_transform_condition(phi, symbols) for phi in conditions]
+    tx = ConditionTransformer()
+    return tx.transform_all(conditions)
 
 
 @define
 class ConditionTransformer:
     symbols: Mapping[str, NumericExpression] = field(factory=dict)
+    subtable: Mapping[str, HplExpression] = field(factory=dict)
     equalities: List[HplBinaryOperator] = field(factory=list)
     disjunctions: List[HplBinaryOperator] = field(factory=list)
     others: List[HplExpression] = field(factory=list)
 
+    def reset(self):
+        self.symbols = {}
+        self.subtable = {}
+        self.equalities = []
+        self.disjunctions = []
+        self.others = []
+
     def transform_all(self, conditions: Iterable[HplExpression]) -> List[HplExpression]:
         self._sort_conditions(conditions)
-        self.symbols = {}
         new_conditions = self._process_equalities()
-        new_conditions.extend(self._process_other_conditions())
         new_conditions.extend(self._process_disjunctions())
+        new_conditions.extend(self._process_other_conditions())
         return new_conditions
 
     def _process_equalities(self) -> List[HplExpression]:
@@ -715,10 +722,15 @@ class ConditionTransformer:
                 x = self.symbols.get(name)
                 y = _convert_arithmetic(b).solve(**self.symbols)
 
+                # replace in original condition
+                c = _number_to_hpl(y)
+                psi = _eq(a, c)
+
                 # does the LHS already have a value?
                 if x is None:
                     x = y
                     self.symbols[name] = y
+                    self.subtable = c
 
                 # is the RHS fully resolved?
                 if y.is_literal:
@@ -728,8 +740,9 @@ class ConditionTransformer:
                         raise ContradictionError(f'{name} = {x} and {name} = {y}')
                     # update symbol table
                     self.symbols[name] = y
+                    self.subtable = c
                     # push to final conditions
-                    conditions.append(phi)
+                    conditions.append(psi)
                     continue
 
                 # did we go around in a loop?
@@ -742,121 +755,102 @@ class ConditionTransformer:
                     raise ContradictionError(f'{name} is already defined: {phi}')
 
                 # deal with it later
-                stack.append(phi)
+                stack.append(psi)
             self.equalities = stack
         # append whatever we were unable to resolve
         conditions.extend(self.equalities)
-        self.equalities = []
         return conditions
 
-    def _process_other_conditions(self):
-        while self._others:
-            phi = self._others.pop()
-
-    def _process_disjunctions(self):
-        while self._disjunctions:
-            phi = self._disjunctions.pop()
+    def _process_disjunctions(self) -> List[HplExpression]:
+        conditions: List[HplExpression] = []
+        for phi in self.disjunctions:
             assert isinstance(phi, HplBinaryOperator), str(phi)
             assert phi.operator.is_or, str(phi)
+            # create a new branch and pass it everything we have solved
+            # as well as everything we were unable to solve
+            tx = ConditionTransformer(
+                symbols=dict(**self.symbols),
+                subtable=dict(**self.subtable),
+                equalities=list(self.equalities),
+                others=list(self.others),
+            )
+            args = (phi.operand1,)
+            branch1 = _list_to_and(tx.transform_all(args))
+            # process the second branch
+            tx = ConditionTransformer(
+                symbols=dict(**self.symbols),
+                subtable=dict(**self.subtable),
+                equalities=list(self.equalities),
+                others=list(self.others),
+            )
+            args = (phi.operand2,)
+            branch2 = _list_to_and(tx.transform_all(args))
+            conditions.append(Or(branch1, branch2))
+        # remove other conditions if already processed in leaf nodes/forks
+        self.equalities = []
+        if self.disjunctions:
+            self.disjunctions = []
+            self.others = []
+        return conditions
 
-    def transform(self, phi: HplExpression) -> HplExpression:
-        self.symbols = {}
-        self._find_symbols(phi)
-        self.progress = True
-        while self.progress:
-            self.progress = False
-            phi = self._transform(phi)
-        return phi
+    def _process_other_conditions(self) -> List[HplExpression]:
+        conditions: List[HplExpression] = []
+        while self.others:
+            phi = self.others.pop()
+            assert phi.can_be_bool, str(phi)
+            phi = self.transform(phi)
+            conditions.append(phi)
+        return conditions
 
-    def _transform(self, phi: HplExpression) -> HplExpression:
-        assert phi.can_be_bool, str(phi)
-        if phi.is_operator:
-            if isinstance(phi, HplBinaryOperator):
-                assert not phi.operator.is_implies, str(phi)
-                assert not phi.operator.is_iff, str(phi)
-                if phi.operator.is_and or phi.operator.is_or:
-                    a = self._transform(phi.operand1)
-                    b = self._transform(phi.operand2)
-                    return phi.but(operand1=a, operand2=b)
-                else:
-                    return self._transform_atomic(phi)
+    def transform(self, expr: HplExpression) -> HplExpression:
+        if isinstance(expr, HplBinaryOperator):
+            assert not expr.operator.is_implies, str(expr)
+            assert not expr.operator.is_iff, str(expr)
+            if expr.operator.is_and or expr.operator.is_or:
+                a = self.transform(expr.operand1)
+                b = self.transform(expr.operand2)
+                return expr.but(operand1=a, operand2=b)
             else:
-                assert isinstance(phi, HplUnaryOperator), str(phi)
-                assert phi.operator.is_not, str(phi)
-                return phi.but(operand=self._transform(phi.operand))
-        return phi
-
-    def _transform_atomic(self, phi: HplBinaryOperator) -> HplExpression:
-        assert phi.operator.is_comparison or phi.operator.is_inclusion, str(phi)
-        # is it in canonical form?
-        x = self.symbols.get(_symbol_name(phi.operand1))
-        if not x:
-            return phi
-
-        if phi.operator.is_inclusion:
-            # b = _transform_expression(phi.operand2)
-            # return phi.but(operand2=b)
-            return phi
-
-        if phi.operator.is_inequality:
-            # b = _transform_expression(phi.operand2)
-            # return phi.but(operand2=b)
-            return phi
-
-        if not phi.operand1.can_be_number:
-            return phi
-
-        b = _convert_arithmetic(phi.operand2)
-        if phi.operator.is_equality:
-            # TODO aliases etc
-            if not value.is_symbol or value.name != a.name:
-                raise ContradictionError(str(phi))
-            self.symbols[a.name] = b
-        elif phi.operator.is_less_than:
-            if value.is_symbol:
-                value = evolve(value, max_value=b, exclude_max=True)
-                self.symbols[a.name] = value
-        elif phi.operator.is_less_than_eq:
-            if value.is_symbol:
-                value = evolve(value, max_value=b, exclude_max=False)
-                self.symbols[a.name] = value
-        elif phi.operator.is_greater_than:
-            if value.is_symbol:
-                value = evolve(value, min_value=b, exclude_min=True)
-                self.symbols[a.name] = value
-        elif phi.operator.is_greater_than_eq:
-            if value.is_symbol:
-                value = evolve(value, min_value=b, exclude_min=False)
-                self.symbols[a.name] = value
-        return phi
-
-    def _find_symbols(self, expr: HplExpression):
-        if expr.is_operator:
-            if isinstance(expr, HplBinaryOperator):
-                self._find_symbols(expr.operand1)
-                self._find_symbols(expr.operand2)
-            elif isinstance(expr, HplUnaryOperator):
-                self._find_symbols(expr.operand)
+                # atomic expression; transform only RHS
+                assert expr.operator.is_comparison or expr.operator.is_inclusion, str(expr)
+                b = self.transform(expr.operand2)
+                return expr.but(operand1=a, operand2=b)
+        elif isinstance(expr, HplUnaryOperator):
+            return expr.but(operand=self.transform(expr.operand))
         elif expr.is_quantifier:
             assert isinstance(expr, HplQuantifier)
-            self._find_symbols(expr.condition)
-        elif not expr.can_be_number:
-            return
-
-        if expr.is_function_call:
+            domain = self.transform(expr.domain)
+            phi = self.transform(expr.condition)
+            return expr.but(domain=domain, condition=phi)
+        elif expr.is_function_call:
             assert isinstance(expr, HplFunctionCall)
-            for arg in expr.arguments:
-                self._find_symbols(arg)
-        else:
-            name = _symbol_name(expr)
-            if name:
-                self.symbols[name] = Symbol(name)
+            args = tuple(map(self.transform, expr.arguments))
+            return expr.but(arguments=args)
+        elif expr.is_value:
+            assert isinstance(expr, HplValue)
+            if expr.is_set:
+                assert isinstance(expr, HplSet)
+                new_values = set()
+                changed = False
+                for element in expr.values:
+                    new_element = self.transform(element)
+                    changed = changed or (new_element is not element)
+                    new_values.add(new_element)
+                return expr if not changed else expr.but(values=new_values)
+            if expr.is_range:
+                assert isinstance(expr, HplRange)
+                a = self.transform(expr.min_value)
+                b = self.transform(expr.max_value)
+                return expr.but(min_value=a, max_value=b)
+            # return a resolved expression if there is one
+            return self.subtable.get(_symbol_name(expr), expr)
+        elif expr.is_accessor:
+            # return a resolved expression if there is one
+            return self.subtable.get(_symbol_name(expr), expr)
+        return expr
 
     def _sort_conditions(self, conditions: Iterable[HplExpression]):
         stack = list(conditions)
-        self.equalities = []
-        self.disjunctions = []
-        self.others = []
         while stack:
             phi = stack.pop()
             assert phi.can_be_bool, str(phi)
@@ -929,41 +923,6 @@ def _symbol_name(expr: HplExpression) -> str:
         assert isinstance(expr, HplDataAccess)
         return str(expr)
     return ''
-
-
-def _transform_expression(
-    expr: HplExpression,
-    symbols: Mapping[str, NumericExpression],
-) -> HplExpression:
-    if expr.is_value:
-        assert isinstance(expr, HplValue)
-        if expr.is_set:
-            assert isinstance(expr, HplSet)
-            new_values = set()
-            changed = False
-            for element in expr.values:
-                new_element = _transform_expression(element, symbols)
-                changed = changed or (new_element is not element)
-                new_values.add(new_element)
-            return expr if not changed else expr.but(values=new_values)
-        if expr.is_range:
-            assert isinstance(expr, HplRange)
-            a = _transform_expression(expr.min_value, symbols)
-            b = _transform_expression(expr.max_value, symbols)
-            return expr.but(min_value=a, max_value=b)
-        if expr.is_variable:
-            assert isinstance(expr, HplVarReference)
-            x = symbols.get(expr.token)
-            if x.is_symbol:
-                return expr
-            x = x.solve(**symbols)
-            return _number_to_hpl(x)
-        return expr
-    if expr.is_function_call:
-        return expr  # FIXME
-    x = _convert_arithmetic(expr)
-    x = x.solve(**symbols)
-    return _number_to_hpl(x)
 
 
 def _convert_arithmetic(expr: HplExpression) -> NumericExpression:
@@ -1057,4 +1016,11 @@ def _in_to_and_or(phi: HplBinaryOperator) -> HplBinaryOperator:
         else:
             q = _lte(a, domain.max_value)
         return And(p, q)
+    return phi
+
+
+def _list_to_and(conditions: Iterable[HplExpression]) -> HplExpression:
+    phi = TRUE
+    for psi in conditions:
+        phi = And(phi, psi)
     return phi
