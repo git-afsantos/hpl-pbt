@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Final, Iterable, List, Mapping, Set, Union
+from typing import Final, Iterable, List, Mapping, Set, Tuple, Union
 
 from enum import auto, Enum
 
@@ -739,14 +739,7 @@ class ConditionTransformer:
 
                 # can we rewrite?
                 if x.is_literal:
-                    # try to move literal from LHS to RHS
-                    # try to move some symbol from RHS to LHS
-                    if y.is_sum:
-                        pass
-                    elif y.is_product:
-                        pass
-                    elif y.is_power:
-                        pass
+                    raise ContradictionError(f'{name} is already defined: {phi}')
 
                 # deal with it later
                 stack.append(phi)
@@ -755,8 +748,6 @@ class ConditionTransformer:
         conditions.extend(self.equalities)
         self.equalities = []
         return conditions
-
-
 
     def _process_other_conditions(self):
         while self._others:
