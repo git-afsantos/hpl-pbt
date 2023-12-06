@@ -14,11 +14,11 @@ from attrs.validators import deep_iterable, instance_of, min_len
 from hpl.ast import (
     And,
     BuiltinBinaryOperator,
-    FALSE,
     HplBinaryOperator,
     HplDataAccess,
     HplExpression,
     HplFunctionCall,
+    HplLiteral,
     HplQuantifier,
     HplRange,
     HplSet,
@@ -26,10 +26,9 @@ from hpl.ast import (
     HplValue,
     Or,
     Not,
-    TRUE,
 )
 from hpl.parser import parse_expresion
-from hpl.rewrite import split_and
+from hpl.rewrite import simplify, split_and
 from typeguard import typechecked
 
 from hplpbt.errors import ContradictionError
@@ -683,7 +682,7 @@ def solve_constraints(conditions: Iterable[HplExpression]) -> List[HplExpression
     # assumes that `conditions` is a list of expressions in canonical/simple form
     # e.g., 'x > y + 20', or 'z = w'
     tx = ConditionTransformer()
-    return tx.transform_all(conditions)
+    return list(map(simplify, tx.transform_all(conditions)))
 
 
 @define
@@ -730,7 +729,7 @@ class ConditionTransformer:
                 if x is None:
                     x = y
                     self.symbols[name] = y
-                    self.subtable = c
+                    self.subtable[name] = c
 
                 # is the RHS fully resolved?
                 if y.is_literal:
@@ -740,7 +739,7 @@ class ConditionTransformer:
                         raise ContradictionError(f'{name} = {x} and {name} = {y}')
                     # update symbol table
                     self.symbols[name] = y
-                    self.subtable = c
+                    self.subtable[name] = c
                     # push to final conditions
                     conditions.append(psi)
                     continue
@@ -806,13 +805,12 @@ class ConditionTransformer:
         if isinstance(expr, HplBinaryOperator):
             assert not expr.operator.is_implies, str(expr)
             assert not expr.operator.is_iff, str(expr)
-            if expr.operator.is_and or expr.operator.is_or:
-                a = self.transform(expr.operand1)
-                b = self.transform(expr.operand2)
-                return expr.but(operand1=a, operand2=b)
-            else:
+            if expr.operator.is_comparison or expr.operator.is_inclusion:
                 # atomic expression; transform only RHS
-                assert expr.operator.is_comparison or expr.operator.is_inclusion, str(expr)
+                b = self.transform(expr.operand2)
+                return expr.but(operand2=b)
+            else:
+                a = self.transform(expr.operand1)
                 b = self.transform(expr.operand2)
                 return expr.but(operand1=a, operand2=b)
         elif isinstance(expr, HplUnaryOperator):
@@ -1002,7 +1000,7 @@ def _in_to_and_or(phi: HplBinaryOperator) -> HplBinaryOperator:
     a = phi.operand1
     domain = phi.operand2
     if isinstance(domain, HplSet):
-        psi = FALSE
+        psi = HplLiteral.false()
         for b in domain.values:
             psi = Or(psi, _eq(a, b))
         return psi
@@ -1020,7 +1018,7 @@ def _in_to_and_or(phi: HplBinaryOperator) -> HplBinaryOperator:
 
 
 def _list_to_and(conditions: Iterable[HplExpression]) -> HplExpression:
-    phi = TRUE
+    phi = HplLiteral.true()
     for psi in conditions:
         phi = And(phi, psi)
     return phi
