@@ -5,11 +5,13 @@
 # Imports
 ###############################################################################
 
-from typing import Container, Iterable, List, Tuple
+from typing import Container, Iterable, List, Tuple, TypeVar
 
 from attrs import field, frozen
 
 from hpl.ast import (
+    And,
+    Exists,
     HplBinaryOperator,
     HplEvent,
     HplEventDisjunction,
@@ -17,10 +19,13 @@ from hpl.ast import (
     HplPattern,
     HplPredicate,
     HplProperty,
+    HplQuantifier,
     HplSimpleEvent,
     HplUnaryOperator,
+    Not,
+    Or,
 )
-from hpl.rewrite import simplify
+from hpl.rewrite import empty_test, is_and, is_false, is_iff, is_not, is_or, is_true, simplify
 from typeguard import typechecked
 
 ###############################################################################
@@ -172,3 +177,111 @@ def _atomic_conditions(predicate: HplPredicate) -> List[HplExpression]:
         else:
             conditions.append(phi)
     return conditions
+
+
+###############################################################################
+# HPL Extension
+###############################################################################
+
+
+P = TypeVar('P', HplPredicate, HplExpression)
+
+
+@typechecked
+def split_or(predicate_or_expression: P) -> List[HplExpression]:
+    if predicate_or_expression.is_predicate:
+        assert isinstance(predicate_or_expression, HplPredicate)
+        return _split_or_expr(predicate_or_expression.condition)
+    assert isinstance(predicate_or_expression, HplExpression)
+    return _split_or_expr(predicate_or_expression)
+
+
+@typechecked
+def _split_or_expr(phi: HplExpression) -> List[HplExpression]:
+    conditions: List[HplExpression] = []
+    stack: List[HplExpression] = [phi]
+    while stack:
+        expr: HplExpression = stack.pop()
+        # preprocessing
+        if is_false(expr):
+            continue
+        if is_true(expr):
+            return [expr]  # tautology
+        expr = _or_presplit_transform(expr)
+        # expr should be either an Or or something undivisible
+        # splits
+        if is_or(expr):
+            assert isinstance(expr, HplBinaryOperator)
+            stack.append(expr.a)
+            stack.append(expr.b)
+        else:
+            conditions.append(expr)
+    return conditions
+
+
+@typechecked
+def _or_presplit_transform(phi: HplExpression) -> HplExpression:
+    if is_not(phi):
+        return _split_or_not(phi)
+    if phi.is_quantifier:
+        return _split_or_quantifier(phi)
+    return phi  # atomic
+
+
+@typechecked
+def _split_or_not(neg: HplUnaryOperator) -> HplExpression:
+    """
+    Transform a Negation into either an Or or something undivisible
+    """
+    phi: HplExpression = neg.operand
+    if is_not(phi):
+        # ~~p  ==  p
+        assert isinstance(phi, HplUnaryOperator)
+        return _or_presplit_transform(phi.operand)
+    if is_and(phi):
+        # ~(a & b)  ==  ~a | ~b
+        assert isinstance(phi, HplBinaryOperator)
+        return Or(Not(phi.a), Not(phi.b))
+    if is_iff(phi):
+        # ~(a <-> b)
+        # ==  ~((~a | b) & (~b | a))
+        # ==  ~(~a | b) | ~(~b | a)
+        # == (a & ~b) | (b & ~a)
+        p = And(phi.a, Not(phi.b))
+        q = And(phi.b, Not(phi.a))
+        return Or(p, q)
+    if phi.is_quantifier:
+        assert isinstance(phi, HplQuantifier)
+        if phi.is_universal:
+            # (~A x: p)  ==  (E x: ~p)
+            p = Not(phi.condition)
+            assert p.contains_reference(phi.variable)
+            phi = Exists(phi.variable, phi.domain, p)
+            return _split_or_quantifier(phi)
+    return neg
+
+
+@typechecked
+def _split_or_quantifier(quant: HplQuantifier) -> HplExpression:
+    """
+    Transform a Quantifier into either an Or or something undivisible
+    """
+    var: str = quant.variable
+    phi: HplExpression = quant.condition
+    if quant.is_existential:
+        # (E x: p | q)  ==  ((E x: p) | (E x: q))
+        phi = _or_presplit_transform(phi)
+        if is_or(phi):
+            assert isinstance(phi, HplBinaryOperator)
+            if phi.a.contains_reference(var):
+                qa = Exists(var, quant.domain, phi.a)
+            else:
+                qa = And(Not(empty_test(quant.domain)), phi.a)
+            if phi.b.contains_reference(var):
+                qb = Exists(var, quant.domain, phi.b)
+            else:
+                qb = And(Not(empty_test(quant.domain)), phi.b)
+            return Or(qa, qb)
+    elif quant.is_universal:
+        pass  # not worth splitting
+    return quant  # nothing to do
