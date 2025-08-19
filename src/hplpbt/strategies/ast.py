@@ -5,7 +5,9 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Final, Iterable, Optional, Set, Tuple
+from typing import Any, Final
+
+from collections.abc import Iterable
 
 from enum import auto, Enum
 
@@ -92,7 +94,7 @@ class Expression:
     def can_be_number(self) -> bool:
         return True
 
-    def references(self) -> Set[str]:
+    def references(self) -> set[str]:
         raise NotImplementedError()
 
     def eq(self, other: 'Expression') -> bool:
@@ -159,7 +161,7 @@ class Literal(Expression):
     def empty_list(cls) -> 'Literal':
         return cls([])
 
-    def references(self) -> Set[str]:
+    def references(self) -> set[str]:
         return set()
 
     def __str__(self) -> str:
@@ -174,7 +176,7 @@ class Reference(Expression):
     def type(self) -> ExpressionType:
         return ExpressionType.REFERENCE
 
-    def references(self) -> Set[str]:
+    def references(self) -> set[str]:
         return {self.variable}
 
     def __str__(self) -> str:
@@ -194,7 +196,7 @@ class UnaryOperator(Expression):
     def can_be_number(self) -> bool:
         return self.token == '-' or self.token == '+' or self.token == '~'
 
-    def references(self) -> Set[str]:
+    def references(self) -> set[str]:
         return self.operand.references()
 
     def eq(self, other: Expression) -> bool:
@@ -242,7 +244,7 @@ class BinaryOperator(Expression):
             or self.token == '^'
         )
 
-    def references(self) -> Set[str]:
+    def references(self) -> set[str]:
         return self.operand1.references() | self.operand2.references()
 
     def eq(self, other: Expression) -> bool:
@@ -266,7 +268,7 @@ class BinaryOperator(Expression):
 class FunctionCall(Expression):
     function: str
     arguments: Iterable[Expression] = field(factory=tuple, converter=tuple)
-    keyword_arguments: Iterable[Tuple[str, Expression]] = field(factory=tuple, converter=tuple)
+    keyword_arguments: Iterable[tuple[str, Expression]] = field(factory=tuple, converter=tuple)
 
     @property
     def type(self) -> ExpressionType:
@@ -288,7 +290,7 @@ class FunctionCall(Expression):
             or self.function == 'atan2'
         )
 
-    def references(self) -> Set[str]:
+    def references(self) -> set[str]:
         names = set()
         for arg in self.arguments:
             names.update(arg.references())
@@ -329,7 +331,7 @@ class IteratorExpression(Expression):
     expression: Expression
     variable: str
     domain: Expression
-    condition: Optional[Expression] = None
+    condition: Expression | None = None
 
     @property
     def type(self) -> ExpressionType:
@@ -430,7 +432,7 @@ class ValueDraw(Expression):
             return any(value.can_be_number for value in self.strategy.elements)
         return False
 
-    def references(self) -> Set[str]:
+    def references(self) -> set[str]:
         return self.strategy.dependencies()
 
     def __str__(self) -> str:
@@ -532,7 +534,7 @@ def convert_to_int(expr: Expression) -> Expression:
             if expr.token == '%':
                 return f(expr.operand1.value % expr.operand2.value)
             if expr.token == '**':
-                return f(expr.operand1.value ** expr.operand2.value)
+                return f(expr.operand1.value**expr.operand2.value)
             if expr.token == '&':
                 return f(expr.operand1.value & expr.operand2.value)
             if expr.token == '|':
@@ -621,7 +623,7 @@ class DataStrategy:
     def is_sample(self) -> bool:
         return self.type == DataStrategyType.SAMPLE
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return set()
 
     def is_value_impossible(self, expr: Expression) -> bool:
@@ -641,7 +643,7 @@ class ConstantValue(DataStrategy):
     def value(self) -> Expression:
         return self.expression  # alias
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.expression.references()
 
     def is_value_impossible(self, expr: Expression) -> bool:
@@ -677,7 +679,7 @@ class RandomBool(DataStrategy):
     def type(self) -> DataStrategyType:
         return DataStrategyType.BOOL
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return set()
 
     def is_value_impossible(self, expr: Expression) -> bool:
@@ -692,7 +694,7 @@ class RandomBool(DataStrategy):
 
 
 @typechecked
-def _maybe_convert_to_int(expr: Optional[Expression]) -> Optional[Expression]:
+def _maybe_convert_to_int(expr: Expression | None) -> Expression | None:
     if expr is None:
         return None
     return convert_to_int(expr)
@@ -702,12 +704,12 @@ def _maybe_convert_to_int(expr: Optional[Expression]) -> Optional[Expression]:
 class RandomInt(DataStrategy):
     # min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     # max_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
-    min_value: Optional[Expression] = field(
+    min_value: Expression | None = field(
         default=None,
         validator=optional(instance_of(Expression)),
         converter=_maybe_convert_to_int,
     )
-    max_value: Optional[Expression] = field(
+    max_value: Expression | None = field(
         default=None,
         validator=optional(instance_of(Expression)),
         converter=_maybe_convert_to_int,
@@ -770,7 +772,7 @@ class RandomInt(DataStrategy):
         max_value = Literal(9223372036854775807)
         return cls(min_value=min_value, max_value=max_value)
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         dependencies = set()
         if self.min_value is not None:
             dependencies.update(self.min_value.references())
@@ -814,11 +816,11 @@ class RandomInt(DataStrategy):
 class RandomFloat(DataStrategy):
     # min_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     # max_value: Expression = field(factory=Literal.none, validator=instance_of(Expression))
-    min_value: Optional[Expression] = field(
+    min_value: Expression | None = field(
         default=None,
         validator=optional(instance_of(Expression)),
     )
-    max_value: Optional[Expression] = field(
+    max_value: Expression | None = field(
         default=None,
         validator=optional(instance_of(Expression)),
     )
@@ -845,7 +847,7 @@ class RandomFloat(DataStrategy):
         max_value = Literal(1.7e308)
         return cls(min_value=min_value, max_value=max_value)
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         dependencies = set()
         if self.min_value is not None:
             dependencies.update(self.min_value.references())
@@ -892,11 +894,11 @@ class RandomFloat(DataStrategy):
 class RandomString(DataStrategy):
     # min_size: Expression = field(factory=Literal.zero, validator=instance_of(Expression))
     # max_size: Expression = field(factory=Literal.none, validator=instance_of(Expression))
-    min_size: Optional[Expression] = field(
+    min_size: Expression | None = field(
         default=None,
         validator=optional(instance_of(Expression)),
     )
-    max_size: Optional[Expression] = field(
+    max_size: Expression | None = field(
         default=None,
         validator=optional(instance_of(Expression)),
     )
@@ -906,7 +908,7 @@ class RandomString(DataStrategy):
     def type(self) -> DataStrategyType:
         return DataStrategyType.STRING
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         dependencies = set()
         if self.min_size is not None:
             dependencies.update(self.min_size.references())
@@ -957,11 +959,11 @@ class RandomArray(DataStrategy):
     # min_size: Expression = field(factory=Literal.zero, validator=instance_of(Expression))
     # max_size: Expression = field(factory=Literal.none, validator=instance_of(Expression))
     # unique: bool = False
-    min_size: Optional[Expression] = field(
+    min_size: Expression | None = field(
         default=None,
         validator=optional(instance_of(Expression)),
     )
-    max_size: Optional[Expression] = field(
+    max_size: Expression | None = field(
         default=None,
         validator=optional(instance_of(Expression)),
     )
@@ -970,7 +972,7 @@ class RandomArray(DataStrategy):
     def type(self) -> DataStrategyType:
         return DataStrategyType.ARRAY
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         dependencies = set()
         if self.min_size is not None:
             dependencies.update(self.min_size.references())
@@ -1011,7 +1013,7 @@ class RandomSample(DataStrategy):
     def type(self) -> DataStrategyType:
         return DataStrategyType.SAMPLE
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         names = set()
         for expresion in self.elements:
             names.update(expresion.references())
@@ -1048,7 +1050,7 @@ class RandomSpecial(DataStrategy):
     def type(self) -> DataStrategyType:
         return DataStrategyType.SPECIAL
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         names = set()
         # for expresion in self.arguments:
         #     names.update(expresion.references())
@@ -1095,10 +1097,10 @@ class Statement:
     def is_block(self) -> bool:
         return self.type == StatementType.BLOCK
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return set()
 
-    def assignments(self) -> Set[str]:
+    def assignments(self) -> set[str]:
         return set()
 
     def merge(self, other: 'Statement') -> 'Statement':
@@ -1127,10 +1129,10 @@ class Assignment(Statement):
         expression = ValueDraw(strategy)
         return cls(variable, expression)
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         return self.expression.references()
 
-    def assignments(self) -> Set[str]:
+    def assignments(self) -> set[str]:
         return {self.variable}
 
     def __str__(self) -> str:
@@ -1151,8 +1153,8 @@ class Assumption(Statement):
     def type(self) -> StatementType:
         return StatementType.ASSUME
 
-    def dependencies(self) -> Set[str]:
-        deps: Set[str] = self.expression.external_references()
+    def dependencies(self) -> set[str]:
+        deps: set[str] = self.expression.external_references()
         if self.expression.contains_self_reference:
             deps.add(self.message_variable)
         return deps

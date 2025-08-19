@@ -5,7 +5,9 @@
 # Imports
 ###############################################################################
 
-from typing import Container, Iterable, List, Tuple, TypeVar
+from typing import TypeVar
+
+from collections.abc import Container, Iterable
 
 from attrs import field, frozen
 
@@ -50,7 +52,7 @@ class StateMachine:
 def split_assumptions(
     hpl_properties: Iterable[HplProperty],
     input_channels: Container[str],
-) -> Tuple[List[HplProperty], List[HplProperty]]:
+) -> tuple[list[HplProperty], list[HplProperty]]:
     """
     Given a list of properties and a collection of input channels,
     returns the list of assumptions and the list of behaviour specifications,
@@ -96,7 +98,7 @@ def check_atomic_conditions_in_canonical_form(predicate: HplPredicate):
 def _split_safety(
     hpl_property: HplProperty,
     input_channels: Container[str],
-) -> Tuple[List[HplProperty], List[HplProperty]]:
+) -> tuple[list[HplProperty], list[HplProperty]]:
     # optimization: avoid creating new objects if the event is simple
     assert hpl_property.pattern.behaviour.is_simple_event
     if hpl_property.pattern.behaviour.name in input_channels:
@@ -108,9 +110,9 @@ def _split_safety(
 def _split_liveness(
     hpl_property: HplProperty,
     input_channels: Container[str],
-) -> Tuple[List[HplProperty], List[HplProperty]]:
-    inputs: List[HplSimpleEvent] = []
-    outputs: List[HplSimpleEvent] = []
+) -> tuple[list[HplProperty], list[HplProperty]]:
+    inputs: list[HplSimpleEvent] = []
+    outputs: list[HplSimpleEvent] = []
     for b in hpl_property.pattern.behaviour.simple_events():
         assert isinstance(b, HplSimpleEvent)
         if b.name in input_channels:
@@ -148,7 +150,7 @@ def _split_liveness(
     return [assumption], [hpl_property]
 
 
-def _recreate_events(events: List[HplSimpleEvent]) -> HplEvent:
+def _recreate_events(events: list[HplSimpleEvent]) -> HplEvent:
     assert events
     result = events[-1]
     for i in range(len(events) - 1):
@@ -156,7 +158,7 @@ def _recreate_events(events: List[HplSimpleEvent]) -> HplEvent:
     return result
 
 
-def _atomic_conditions(predicate: HplPredicate) -> List[HplExpression]:
+def _atomic_conditions(predicate: HplPredicate) -> list[HplExpression]:
     conditions = []
     stack = [simplify(predicate.condition)]
     while stack:
@@ -188,7 +190,7 @@ P = TypeVar('P', HplPredicate, HplExpression)
 
 
 @typechecked
-def split_or(predicate_or_expression: P) -> List[HplExpression]:
+def split_or(predicate_or_expression: P) -> list[HplExpression]:
     if predicate_or_expression.is_predicate:
         assert isinstance(predicate_or_expression, HplPredicate)
         return _split_or_expr(predicate_or_expression.condition)
@@ -197,9 +199,9 @@ def split_or(predicate_or_expression: P) -> List[HplExpression]:
 
 
 @typechecked
-def _split_or_expr(phi: HplExpression) -> List[HplExpression]:
-    conditions: List[HplExpression] = []
-    stack: List[HplExpression] = [phi]
+def _split_or_expr(phi: HplExpression) -> list[HplExpression]:
+    conditions: list[HplExpression] = []
+    stack: list[HplExpression] = [phi]
     while stack:
         expr: HplExpression = stack.pop()
         # preprocessing

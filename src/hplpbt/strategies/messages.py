@@ -5,7 +5,9 @@
 # Imports
 ###############################################################################
 
-from typing import Callable, Dict, Final, Iterable, List, Mapping, Optional, Set, Tuple, Union
+from typing import Final
+
+from collections.abc import Callable, Iterable, Mapping
 
 from attrs import field, frozen
 from attrs.validators import deep_mapping, instance_of
@@ -26,6 +28,7 @@ from hplpbt.strategies.data import (
     NumberFieldGenerator,
     StringFieldGenerator,
 )
+
 # from hpl.types import TypeToken
 from typeguard import check_type, typechecked
 
@@ -85,6 +88,7 @@ class MessageStrategy:
     2. initialize the message object, using values from stage 1
     3. initialize dependent fields of the message itself and run assumptions
     """
+
     name: str
     package: str
     class_name: str
@@ -135,10 +139,10 @@ class MessageStrategyArgument:
 
 @typechecked
 def strategies_from_spec(
-    spec: Union[HplSpecification, Iterable[HplProperty]],
+    spec: HplSpecification | Iterable[HplProperty],
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, MessageType],
-) -> Set[MessageStrategy]:
+) -> set[MessageStrategy]:
     builder = MessageStrategyBuilder(input_channels, type_defs)
     return builder.build_from_spec(spec)
 
@@ -148,7 +152,7 @@ def strategies_from_property(
     hpl_property: HplProperty,
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, MessageType],
-) -> Set[MessageStrategy]:
+) -> set[MessageStrategy]:
     builder = MessageStrategyBuilder(input_channels, type_defs)
     return builder.build_from_property(hpl_property)
 
@@ -158,7 +162,7 @@ def strategies_from_event(
     event: HplEvent,
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, MessageType],
-) -> Set[MessageStrategy]:
+) -> set[MessageStrategy]:
     builder = MessageStrategyBuilder(input_channels, type_defs)
     return builder.build_from_event(event)
 
@@ -194,8 +198,8 @@ class MessageStrategyBuilder:
 
     def build_from_spec(
         self,
-        spec: Union[HplSpecification, Iterable[HplProperty]],
-    ) -> Set[MessageStrategy]:
+        spec: HplSpecification | Iterable[HplProperty],
+    ) -> set[MessageStrategy]:
         if isinstance(spec, HplSpecification):
             spec = spec.properties
         strategies = set()
@@ -203,7 +207,7 @@ class MessageStrategyBuilder:
             strategies.update(self.build_from_property(hpl_property))
         return strategies
 
-    def build_from_property(self, hpl_property: HplProperty) -> Set[MessageStrategy]:
+    def build_from_property(self, hpl_property: HplProperty) -> set[MessageStrategy]:
         strategies = set()
 
         event = hpl_property.scope.activator
@@ -239,12 +243,12 @@ class MessageStrategyBuilder:
 
         return strategies
 
-    def build_from_event(self, event: HplEvent) -> Set[MessageStrategy]:
+    def build_from_event(self, event: HplEvent) -> set[MessageStrategy]:
         if event.is_simple_event:
             return self._build_strategies(event)
-        return set(strat for msg in event.simple_events() for strat in self._build_strategies(msg))
+        return {strat for msg in event.simple_events() for strat in self._build_strategies(msg)}
 
-    def _build_strategies(self, event: HplSimpleEvent) -> Set[MessageStrategy]:
+    def _build_strategies(self, event: HplSimpleEvent) -> set[MessageStrategy]:
         if event.name not in self.input_channels:
             return set()
         type_name: str = self.input_channels[event.name]
@@ -254,7 +258,7 @@ class MessageStrategyBuilder:
     def build_pack_from_simple_event(
         self,
         event: HplSimpleEvent,
-    ) -> Tuple[MessageStrategy, Set[MessageStrategy]]:
+    ) -> tuple[MessageStrategy, set[MessageStrategy]]:
         if event.name not in self.input_channels:
             raise ValueError(f'unknown input channel: {event.name}')
         type_name: str = self.input_channels[event.name]
@@ -263,7 +267,7 @@ class MessageStrategyBuilder:
     def build_pack_for_type_name(
         self,
         type_name: str,
-    ) -> Tuple[MessageStrategy, Set[MessageStrategy]]:
+    ) -> tuple[MessageStrategy, set[MessageStrategy]]:
         type_def: MessageType = self.type_defs[type_name]
         deps = self._strategies_for_type(type_def, only_deps=True)
         main = self._strategy_for_type(type_def)
@@ -272,9 +276,9 @@ class MessageStrategyBuilder:
     def _strategies_for_type(
         self,
         type_def: MessageType,
-        visited: Optional[Set[str]] = None,
+        visited: set[str] | None = None,
         only_deps: bool = False,
-    ) -> Set[MessageStrategy]:
+    ) -> set[MessageStrategy]:
         visited = set() if visited is None else visited
         strategies = set()
         # mark self as visited to avoid cyclic dependencies
@@ -305,10 +309,10 @@ class SingleMessageStrategyBuilder:
     # name of the variable containing the constructed message
     message_variable: str = 'msg'
     # arguments to provide to the message type constructor
-    _positional_arguments: List[Tuple[str, MessageStrategyArgument]] = field(factory=list)
-    _keyword_arguments: List[Tuple[str, MessageStrategyArgument]] = field(factory=list)
+    _positional_arguments: list[tuple[str, MessageStrategyArgument]] = field(factory=list)
+    _keyword_arguments: list[tuple[str, MessageStrategyArgument]] = field(factory=list)
     # assumptions about the arguments to the message type constructor
-    _preconditions: List[HplExpression] = field(factory=list)
+    _preconditions: list[HplExpression] = field(factory=list)
 
     def build(self) -> MessageStrategy:
         # 1. Iterate over message type parameters and create local variables
@@ -360,7 +364,7 @@ class SingleMessageStrategyBuilder:
             body=body,
         )
 
-    def _create_strategy_arguments(self) -> Dict[str, str]:
+    def _create_strategy_arguments(self) -> dict[str, str]:
         # returns a reference map, mapping user-input names to generated names
         # resets/rebuilds positional and keyword argument lists
         self._positional_arguments.clear()
@@ -390,7 +394,7 @@ class SingleMessageStrategyBuilder:
             gen: BasicDataFieldGenerator = BasicDataFieldGenerator(RandomSpecial(param.base_type))
         else:
             gen = factory()
-        #if param.is_array:
+        # if param.is_array:
         #    s = RandomArray(s)
         return gen
 
@@ -422,7 +426,7 @@ class SingleMessageStrategyBuilder:
 
     def _refine_data_generators(self):
         # create a mapping of each argument for easier access
-        argmap: Dict[str, MessageStrategyArgument] = {}
+        argmap: dict[str, MessageStrategyArgument] = {}
         for name, arg in self._positional_arguments:
             argmap[name] = arg
         for name, arg in self._keyword_arguments:
@@ -438,7 +442,7 @@ class SingleMessageStrategyBuilder:
                 arg = argmap[name].generator.assume(phi)
                 break
 
-    def _generate_message_from_type_params(self) -> List[Statement]:
+    def _generate_message_from_type_params(self) -> list[Statement]:
         body = []
         args = []
         for name, arg in self._positional_arguments:
@@ -459,7 +463,7 @@ class SingleMessageStrategyBuilder:
         # return body
         return sort_statements(body)
 
-    def _generate_argument(self, name: str, arg: MessageStrategyArgument) -> List[Statement]:
+    def _generate_argument(self, name: str, arg: MessageStrategyArgument) -> list[Statement]:
         statements = []
         statements.append(Assignment.draw(name, arg.generator.strategy))
         return statements

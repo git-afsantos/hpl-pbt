@@ -9,7 +9,7 @@
 # Imports
 ###############################################################################
 
-from typing import Iterable, List, Set
+from collections.abc import Iterable
 
 from attrs import frozen
 
@@ -24,7 +24,7 @@ from hplpbt.strategies.ast import Statement
 @frozen
 class SortableStatement:
     ast: Statement  # the statement itself
-    pending: Set[str]  # dependencies that are still pending
+    pending: set[str]  # dependencies that are still pending
 
     @classmethod
     def of(cls, statement: Statement) -> 'SortableStatement':
@@ -34,16 +34,17 @@ class SortableStatement:
 @frozen
 class StatementGroup:
     """Logical grouping of all required statements to fully build a data field."""
-    statements: List[SortableStatement]
+
+    statements: list[SortableStatement]
     data_field: str
 
 
-def sort_statements(statements: Iterable[Statement]) -> List[Statement]:
-    sorted_statements: List[Statement] = []
-    queue: List[SortableStatement] = [SortableStatement.of(s) for s in reversed(statements)]
+def sort_statements(statements: Iterable[Statement]) -> list[Statement]:
+    sorted_statements: list[Statement] = []
+    queue: list[SortableStatement] = [SortableStatement.of(s) for s in reversed(statements)]
     while queue:
         progress: bool = False
-        new_queue: List[SortableStatement] = []
+        new_queue: list[SortableStatement] = []
         while queue:
             statement = queue.pop()
             if statement.pending:

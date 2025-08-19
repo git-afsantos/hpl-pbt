@@ -5,7 +5,9 @@
 # Imports
 ###############################################################################
 
-from typing import Final, Iterable, List, Mapping, Set, Union
+from typing import Final
+
+from collections.abc import Iterable, Mapping
 
 from enum import auto, Enum
 
@@ -99,7 +101,7 @@ class Expression:
     def is_function_call(self) -> bool:
         return self.type == ExpressionType.CALL
 
-    def references(self) -> Set[str]:
+    def references(self) -> set[str]:
         raise NotImplementedError()
 
 
@@ -144,7 +146,7 @@ class NumericExpression(Expression):
 
 @frozen
 class NumberLiteral(NumericExpression):
-    value: Union[int, float]
+    value: int | float
 
     @property
     def type(self) -> ExpressionType:
@@ -196,7 +198,7 @@ INFINITY: Final[NumberLiteral] = NumberLiteral(float('inf'))
 MINUS_INFINITY: Final[NumberLiteral] = NumberLiteral(-float('inf'))
 
 
-def _ensure_num_expr(x: Union[int, float, NumericExpression]) -> NumericExpression:
+def _ensure_num_expr(x: int | float | NumericExpression) -> NumericExpression:
     return x if isinstance(x, NumericExpression) else NumberLiteral(x)
 
 
@@ -213,7 +215,7 @@ def _default_symbol_name() -> str:
 class Symbol(NumericExpression):
     name: str = field(factory=_default_symbol_name)
     # overrides
-    minus_sign: bool = False 
+    minus_sign: bool = False
     min_value: NumericExpression = field(
         default=MINUS_INFINITY,
         converter=_ensure_num_expr,
@@ -302,7 +304,7 @@ class Sum(NumericExpression):
         validator=deep_iterable(
             instance_of(NumericExpression),
             iterable_validator=min_len(2),
-        )
+        ),
     )
 
     @property
@@ -397,7 +399,7 @@ class Product(NumericExpression):
         validator=deep_iterable(
             instance_of(NumericExpression),
             iterable_validator=min_len(2),
-        )
+        ),
     )
 
     @property
@@ -523,7 +525,7 @@ class Power(NumericExpression):
                 return base
             if exponent.is_literal:
                 assert isinstance(exponent, NumberLiteral)
-                return _literal(base.value ** exponent.value)
+                return _literal(base.value**exponent.value)
 
         elif exponent.is_literal:
             assert isinstance(exponent, NumberLiteral)
@@ -544,7 +546,7 @@ class Power(NumericExpression):
         return f'({self.base} ** {self.exponent})'
 
 
-def _literal(x: Union[int, float, NumberLiteral]) -> NumberLiteral:
+def _literal(x: int | float | NumberLiteral) -> NumberLiteral:
     return x if isinstance(x, NumberLiteral) else NumberLiteral(x)
 
 
@@ -678,7 +680,7 @@ def multiply(a: NumericExpression, b: NumericExpression) -> NumericExpression:
 
 
 @typechecked
-def solve_constraints(conditions: Iterable[HplExpression]) -> List[HplExpression]:
+def solve_constraints(conditions: Iterable[HplExpression]) -> list[HplExpression]:
     # assumes that `conditions` is a list of expressions in canonical/simple form
     # e.g., 'x > y + 20', or 'z = w'
     tx = ConditionTransformer()
@@ -689,9 +691,9 @@ def solve_constraints(conditions: Iterable[HplExpression]) -> List[HplExpression
 class ConditionTransformer:
     symbols: Mapping[str, NumericExpression] = field(factory=dict)
     subtable: Mapping[str, HplExpression] = field(factory=dict)
-    equalities: List[HplBinaryOperator] = field(factory=list)
-    disjunctions: List[HplBinaryOperator] = field(factory=list)
-    others: List[HplExpression] = field(factory=list)
+    equalities: list[HplBinaryOperator] = field(factory=list)
+    disjunctions: list[HplBinaryOperator] = field(factory=list)
+    others: list[HplExpression] = field(factory=list)
 
     def reset(self):
         self.symbols = {}
@@ -700,14 +702,14 @@ class ConditionTransformer:
         self.disjunctions = []
         self.others = []
 
-    def transform_all(self, conditions: Iterable[HplExpression]) -> List[HplExpression]:
+    def transform_all(self, conditions: Iterable[HplExpression]) -> list[HplExpression]:
         self._sort_conditions(conditions)
         new_conditions = self._process_equalities()
         new_conditions.extend(self._process_disjunctions())
         new_conditions.extend(self._process_other_conditions())
         return new_conditions
 
-    def _process_equalities(self) -> List[HplExpression]:
+    def _process_equalities(self) -> list[HplExpression]:
         conditions = []
         progress = True
         while progress:
@@ -760,8 +762,8 @@ class ConditionTransformer:
         conditions.extend(self.equalities)
         return conditions
 
-    def _process_disjunctions(self) -> List[HplExpression]:
-        conditions: List[HplExpression] = []
+    def _process_disjunctions(self) -> list[HplExpression]:
+        conditions: list[HplExpression] = []
         for phi in self.disjunctions:
             assert isinstance(phi, HplBinaryOperator), str(phi)
             assert phi.operator.is_or, str(phi)
@@ -792,8 +794,8 @@ class ConditionTransformer:
             self.others = []
         return conditions
 
-    def _process_other_conditions(self) -> List[HplExpression]:
-        conditions: List[HplExpression] = []
+    def _process_other_conditions(self) -> list[HplExpression]:
+        conditions: list[HplExpression] = []
         while self.others:
             phi = self.others.pop()
             assert phi.can_be_bool, str(phi)

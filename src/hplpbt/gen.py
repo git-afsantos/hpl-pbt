@@ -5,7 +5,9 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Container, Final, Iterable, List, Mapping, Optional, Set, Tuple, Union
+from typing import Any, Final
+
+from collections.abc import Container, Iterable, Mapping
 
 from pathlib import Path
 
@@ -31,7 +33,7 @@ MSG_TYPES_KEY_TYPEDEFS: Final[str] = 'data'
 
 
 def generate_tests_from_files(
-    paths: Iterable[Union[Path, str]],
+    paths: Iterable[Path | str],
     msg_types: Mapping[str, Mapping[str, Any]],
 ) -> str:
     """
@@ -39,7 +41,7 @@ def generate_tests_from_files(
     given a list of paths to HPL files with specifications.
     """
     parser = specification_parser()
-    properties: List[HplProperty] = []
+    properties: list[HplProperty] = []
     for input_path in paths:
         path: Path = Path(input_path).resolve(strict=True)
         text: str = path.read_text(encoding='utf-8').strip()
@@ -49,7 +51,7 @@ def generate_tests_from_files(
 
 
 def generate_tests_from_spec(
-    spec: Union[HplSpecification, str],
+    spec: HplSpecification | str,
     msg_types: Mapping[str, Mapping[str, Any]],
 ) -> str:
     """
@@ -62,7 +64,7 @@ def generate_tests_from_spec(
 
 
 def generate_tests(
-    input_properties: Iterable[Union[str, HplProperty]],
+    input_properties: Iterable[str | HplProperty],
     msg_types: Mapping[str, Mapping[str, Any]],
 ) -> str:
     _validate_msg_types(msg_types)
@@ -102,7 +104,7 @@ def generate_tests(
 ###############################################################################
 
 
-def _parsed_properties(properties: Iterable[Union[str, HplProperty]]) -> List[HplProperty]:
+def _parsed_properties(properties: Iterable[str | HplProperty]) -> list[HplProperty]:
     parser = property_parser()
     return [p if isinstance(p, HplProperty) else parser.parse(p) for p in properties]
 
@@ -110,7 +112,7 @@ def _parsed_properties(properties: Iterable[Union[str, HplProperty]]) -> List[Hp
 def _get_output_channels(
     properties: Iterable[HplProperty],
     input_channels: Container[str],
-) -> Set[str]:
+) -> set[str]:
     output_channels = set()
     for prop in properties:
         if prop.scope.has_activator:
@@ -135,8 +137,8 @@ def _get_output_channels(
     return output_channels
 
 
-def _import_list(trace_strategies: Iterable[TraceStrategy]) -> List[Tuple[str, List[str]]]:
-    imports: Mapping[str, List[str]] = {}
+def _import_list(trace_strategies: Iterable[TraceStrategy]) -> list[tuple[str, list[str]]]:
+    imports: Mapping[str, list[str]] = {}
     for trace_strategy in trace_strategies:
         for msg_strategy in trace_strategy.all_msg_strategies():
             classes = imports.get(msg_strategy.package)
@@ -145,13 +147,13 @@ def _import_list(trace_strategies: Iterable[TraceStrategy]) -> List[Tuple[str, L
                 imports[msg_strategy.package] = classes
             else:
                 classes.append(msg_strategy.class_name)
-    import_list: List[Tuple[str, List[str]]] = []
+    import_list: list[tuple[str, list[str]]] = []
     for package in sorted(imports.keys()):
         import_list.append((package, sorted(imports[package])))
     return import_list
 
 
-def _discard_useless_properties(properties: Iterable[HplProperty]) -> List[HplProperty]:
+def _discard_useless_properties(properties: Iterable[HplProperty]) -> list[HplProperty]:
     # drop unbounded liveness properties from the specification
     # these do not impose any obligations on tests
     new_properties = []
@@ -185,7 +187,7 @@ def _check_atomic_conditions_testable(
         _check_can_generate_event(prop.pattern.trigger, input_channels)
 
 
-def _check_can_generate_event(any_event: Optional[HplEvent], input_channels: Container[str]):
+def _check_can_generate_event(any_event: HplEvent | None, input_channels: Container[str]):
     if any_event is None:
         return
     for event in any_event.simple_events():
@@ -220,15 +222,14 @@ def _validate_msg_types(msg_types: Mapping[str, Mapping[str, Any]]):
             raise TypeError(f"expected str keys in '{MSG_TYPES_KEY_CHANNELS}', found {key!r}")
         if not isinstance(value, str):
             raise TypeError(
-                f"expected str values for each '{MSG_TYPES_KEY_CHANNELS}' key,"
-                f" found {value!r}"
+                f"expected str values for each '{MSG_TYPES_KEY_CHANNELS}' key," f" found {value!r}"
             )
         if value not in typedefs:
             raise ValueError(f"unknown message type {value!r}")
 
 
 def _validate_type_def(name: str, type_def: Mapping[str, Any], custom_types: Container[str]):
-    module: Optional[str] = type_def.get('import')
+    module: str | None = type_def.get('import')
     if module is not None and not isinstance(module, str):
         raise TypeError(f"expected str 'import' value for {name}, found {module!r}")
     try:
