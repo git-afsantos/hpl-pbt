@@ -5,8 +5,6 @@
 # Imports
 ################################################################################
 
-from typing import List
-
 from hpl.ast import (
     And,
     Exists,
@@ -39,9 +37,9 @@ from typeguard import typechecked
 
 
 @typechecked
-def split_or(phi: HplExpression) -> List[HplExpression]:
-    conditions: List[HplExpression] = []
-    stack: List[HplExpression] = [phi]
+def split_or(phi: HplExpression) -> list[HplExpression]:
+    conditions: list[HplExpression] = []
+    stack: list[HplExpression] = [phi]
     while stack:
         expr: HplExpression = stack.pop()
         # preprocessing
@@ -131,9 +129,6 @@ def _split_or_quantifier(quant: HplQuantifier) -> HplExpression:
         # (A x: p & q)  ==  ((A x: p) & (A x: q))
         pass  # not worth splitting conjunctions
     return quant  # nothing to do
-
-
-
 
 
 def canonical_form(expr: HplBinaryOperator) -> HplBinaryOperator:

@@ -5,7 +5,7 @@
 # Imports
 ###############################################################################
 
-from typing import Callable, List, Mapping
+from collections.abc import Callable, Mapping
 
 from attrs import define, field
 from hpl.ast import (
@@ -86,7 +86,7 @@ from hplpbt.strategies.ast import (
 @define
 class DataVariable:
     base_strategy: DataStrategy
-    branches: List[DataStrategy] = field(factory=list)
+    branches: list[DataStrategy] = field(factory=list)
 
     def eq(self, expr: HplExpression):
         pass
@@ -148,7 +148,7 @@ class DataGenerator:
     def _assume_accessor(self, accessor: HplDataAccess):
         # FIXME support this
         # if phi.is_field: assert isinstance(phi, HplFieldAccess)
-        #if phi.is_indexed:
+        # if phi.is_indexed:
         #    assert isinstance(phi, HplArrayAccess)
         # ref = phi.base_object()
         pass
@@ -201,12 +201,10 @@ class DataGenerator:
             raise TypeError(f'not a boolean condition: {phi}')
 
 
-
-
 @define
 class BasicDataFieldGenerator:
     strategy: DataStrategy
-    assumptions: List[HplExpression] = field(factory=list)
+    assumptions: list[HplExpression] = field(factory=list)
 
     def assume(self, phi: HplExpression):
         if not phi.can_be_bool:
@@ -227,7 +225,7 @@ class BasicDataFieldGenerator:
         elif phi.is_accessor:
             # FIXME support this
             # if phi.is_field: assert isinstance(phi, HplFieldAccess)
-            #if phi.is_indexed:
+            # if phi.is_indexed:
             #    assert isinstance(phi, HplArrayAccess)
             # ref = phi.base_object()
             pass
@@ -290,7 +288,7 @@ class BasicDataFieldGenerator:
         elif phi.is_accessor:
             # FIXME support this
             # if phi.is_field: assert isinstance(phi, HplFieldAccess)
-            #if phi.is_indexed:
+            # if phi.is_indexed:
             #    assert isinstance(phi, HplArrayAccess)
             # ref = phi.base_object()
             pass

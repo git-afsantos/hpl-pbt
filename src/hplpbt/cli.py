@@ -18,7 +18,7 @@ Some of the structure of this file came from this StackExchange question:
 # Imports
 ###############################################################################
 
-from typing import Any, Dict, Final, List, Optional
+from typing import Any, Final
 
 import argparse
 from pathlib import Path
@@ -41,7 +41,7 @@ PROG: Final[str] = 'hplpbt'
 ###############################################################################
 
 
-def parse_arguments(argv: Optional[List[str]]) -> Dict[str, Any]:
+def parse_arguments(argv: list[str] | None) -> dict[str, Any]:
     description = 'Property-based test generator for HPL properties.'
     parser = argparse.ArgumentParser(prog=PROG, description=description)
 
@@ -78,9 +78,9 @@ def parse_arguments(argv: Optional[List[str]]) -> Dict[str, Any]:
 ###############################################################################
 
 
-def load_configs(args: Dict[str, Any]) -> Dict[str, Any]:
+def load_configs(args: dict[str, Any]) -> dict[str, Any]:
     try:
-        config: Dict[str, Any] = {}
+        config: dict[str, Any] = {}
         # with open(args['config_path'], 'r') as file_pointer:
         # yaml.safe_load(file_pointer)
 
@@ -94,7 +94,7 @@ def load_configs(args: Dict[str, Any]) -> Dict[str, Any]:
             raise err
 
         # Optional: return some sane fallback defaults.
-        sane_defaults: Dict[str, Any] = {}
+        sane_defaults: dict[str, Any] = {}
         return sane_defaults
 
 
@@ -103,16 +103,16 @@ def load_configs(args: Dict[str, Any]) -> Dict[str, Any]:
 ###############################################################################
 
 
-def handle_test_generation(args: Dict[str, Any], _configs: Dict[str, Any]) -> int:
+def handle_test_generation(args: dict[str, Any], _configs: dict[str, Any]) -> int:
     yaml = YAML(typ='safe')
-    msg_types: Dict[str, str] = yaml.load(args['msg_types'])
+    msg_types: dict[str, str] = yaml.load(args['msg_types'])
 
     if args.get('files'):
         output: str = generate_tests_from_files(args['specs'], msg_types)
     else:
         output = generate_tests(args['specs'], msg_types)
 
-    output_path: Optional[str] = args.get('output')
+    output_path: str | None = args.get('output')
     if output_path:
         path: Path = Path(output_path).resolve(strict=False)
         path.write_text(output, encoding='utf-8')
@@ -127,7 +127,7 @@ def handle_test_generation(args: Dict[str, Any], _configs: Dict[str, Any]) -> in
 ###############################################################################
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv)
 
     try:

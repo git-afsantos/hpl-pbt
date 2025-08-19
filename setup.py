@@ -58,9 +58,7 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.12',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Software Development',
@@ -70,7 +68,7 @@ setup(
     entry_points={
         'console_scripts': [f'{PROJECT}={PYTHON_PKG}.cli:main'],
     },
-    python_requires='>=3.8, <4',
+    python_requires='>=3.12, <4',
     install_requires=[
         'attrs>=23.1,<26.0',
         'hpl-rv~=1.2',

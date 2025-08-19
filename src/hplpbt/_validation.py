@@ -1,7 +1,10 @@
-
 ###############################################################################
 # Input Validation
 ###############################################################################
+
+
+from typing import Any
+from collections.abc import Iterable, Mapping
 
 
 def _validate_msg_types(msg_types: Mapping[str, Mapping[str, Any]]):
@@ -25,15 +28,14 @@ def _validate_msg_types(msg_types: Mapping[str, Mapping[str, Any]]):
             raise TypeError(f"expected str keys in '{MSG_TYPES_KEY_CHANNELS}', found {key!r}")
         if not isinstance(value, str):
             raise TypeError(
-                f"expected str values for each '{MSG_TYPES_KEY_CHANNELS}' key,"
-                f" found {value!r}"
+                f"expected str values for each '{MSG_TYPES_KEY_CHANNELS}' key," f" found {value!r}"
             )
         if value not in typedefs:
             raise ValueError(f"unknown message type {value!r}")
 
 
 def _validate_type_def(name: str, type_def: Mapping[str, Any]):
-    module: Optional[str] = type_def.get('import')
+    module: str | None = type_def.get('import')
     if module is not None and not isinstance(module, str):
         raise TypeError(f"expected str 'import' value for {name}, found {module!r}")
     try:
@@ -45,7 +47,7 @@ def _validate_type_def(name: str, type_def: Mapping[str, Any]):
         raise ValueError(f"in type definition '{name}': {err}") from err
 
 
-def _validate_type_pos_args(args: Iterable[Union[str, Mapping[str, Any]]]):
+def _validate_type_pos_args(args: Iterable[str | Mapping[str, Any]]):
     if not isinstance(args, Iterable):
         raise TypeError(f"expected Iterable 'args' value, found {args!r}")
     for param_type in args:
@@ -57,7 +59,7 @@ def _validate_type_pos_args(args: Iterable[Union[str, Mapping[str, Any]]]):
             raise ValueError(f"in 'args' entry: {err}") from err
 
 
-def _validate_type_kwargs(kwargs: Mapping[str, Union[str, Mapping[str, Any]]]):
+def _validate_type_kwargs(kwargs: Mapping[str, str | Mapping[str, Any]]):
     if not isinstance(kwargs, Mapping):
         raise TypeError(f"expected Mapping 'kwargs' value, found {kwargs!r}")
     for name, param_type in kwargs.items():
@@ -71,7 +73,7 @@ def _validate_type_kwargs(kwargs: Mapping[str, Union[str, Mapping[str, Any]]]):
             raise ValueError(f"in 'kwargs' value for '{name}': {err}") from err
 
 
-def _validate_param_type(param_type: Union[str, Mapping[str, Any]]):
+def _validate_param_type(param_type: str | Mapping[str, Any]):
     if isinstance(param_type, str):
         return
     if isinstance(param_type, Mapping):
@@ -89,7 +91,7 @@ def _validate_param_type(param_type: Union[str, Mapping[str, Any]]):
 
 
 @typechecked
-def param_from_data(data: Union[str, Mapping[str, Any]]) -> ParameterDefinition:
+def param_from_data(data: str | Mapping[str, Any]) -> ParameterDefinition:
     if isinstance(data, str):
         data = {'type': data}
     # name: str = data.get('name', '')

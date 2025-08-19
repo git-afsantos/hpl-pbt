@@ -5,7 +5,9 @@
 # Imports
 ###############################################################################
 
-from typing import Final, Iterable, List, Mapping, Optional, Set, Union
+from typing import Final
+
+from collections.abc import Iterable, Mapping
 
 from attrs import define, evolve, field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of
@@ -59,12 +61,11 @@ class TraceSegmentStrategy:
     def has_mandatory(self) -> bool:
         return len(self.mandatory) > 0
 
-    def spam_strategies(self) -> List[MessageStrategy]:
+    def spam_strategies(self) -> list[MessageStrategy]:
         return [event.strategy for event in self.spam]
 
-    def mandatory_strategies(self) -> List[MessageStrategy]:
+    def mandatory_strategies(self) -> list[MessageStrategy]:
         return [event.strategy for event in self.mandatory]
-
 
 
 @frozen
@@ -77,8 +78,8 @@ class TraceStrategy:
     def name(self) -> str:
         return f'gen_{self.trace_name}'
 
-    def all_msg_strategies(self) -> Set[MessageStrategy]:
-        strategies: Set[MessageStrategy] = set()
+    def all_msg_strategies(self) -> set[MessageStrategy]:
+        strategies: set[MessageStrategy] = set()
         for segment in self.segments:
             strategies.update(segment.helpers)
             strategies.update(segment.spam_strategies())
@@ -86,7 +87,7 @@ class TraceStrategy:
         return strategies
 
     def get_return_type(self) -> str:
-        return_types: Set[str] = set()
+        return_types: set[str] = set()
         for segment in self.segments:
             return_types.update(strat.return_type for strat in segment.spam_strategies())
             return_types.update(strat.return_type for strat in segment.mandatory_strategies())
@@ -105,11 +106,11 @@ class TraceStrategy:
 
 @typechecked
 def strategies_from_spec(
-    spec: Union[HplSpecification, Iterable[HplProperty]],
+    spec: HplSpecification | Iterable[HplProperty],
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, MessageType],
-    assumptions: Optional[Iterable[HplProperty]] = None,
-) -> Set[TraceStrategy]:
+    assumptions: Iterable[HplProperty] | None = None,
+) -> set[TraceStrategy]:
     assumptions = assumptions if assumptions is not None else []
     builder = TraceStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
     return builder.build_from_spec(spec)
@@ -120,7 +121,7 @@ def strategy_from_property(
     hpl_property: HplProperty,
     input_channels: Mapping[str, str],
     type_defs: Mapping[str, MessageType],
-    assumptions: Optional[Iterable[HplProperty]] = None,
+    assumptions: Iterable[HplProperty] | None = None,
 ) -> TraceStrategy:
     assumptions = assumptions if assumptions is not None else []
     builder = TraceStrategyBuilder(input_channels, type_defs, assumptions=assumptions)
@@ -186,8 +187,8 @@ class TraceStrategyBuilder:
 
     def build_from_spec(
         self,
-        spec: Union[HplSpecification, Iterable[HplProperty]],
-    ) -> Set[TraceStrategy]:
+        spec: HplSpecification | Iterable[HplProperty],
+    ) -> set[TraceStrategy]:
         if isinstance(spec, HplSpecification):
             spec = spec.properties
         strategies = set()
@@ -197,7 +198,7 @@ class TraceStrategyBuilder:
 
     def build_from_property(self, hpl_property: HplProperty) -> TraceStrategy:
         trace_name = self._name_generator.generate()
-        segments: List[TraceSegmentStrategy] = []
+        segments: list[TraceSegmentStrategy] = []
 
         # first segment: activator
         event = hpl_property.scope.activator
@@ -253,14 +254,16 @@ class TraceStrategyBuilder:
         delay: float = 0.0,
         timeout: float = INF,
     ) -> TraceSegmentStrategy:
-        segment: TraceSegmentStrategy = self.spam_segment_avoiding(event, delay=delay, timeout=timeout)
+        segment: TraceSegmentStrategy = self.spam_segment_avoiding(
+            event, delay=delay, timeout=timeout
+        )
         # FIXME apply general trace assumptions
         # 1. alter type definitions to generate triggers satisfying conditions
         triggers: Mapping[str, HplPredicate] = {}
         for ev in event.simple_events():
             assert isinstance(ev, HplSimpleEvent)
             # discard unknown input channels
-            type_name: Optional[str] = self.input_channels.get(ev.name)
+            type_name: str | None = self.input_channels.get(ev.name)
             if type_name is None:
                 continue
             # store predicates per message type
@@ -269,8 +272,8 @@ class TraceStrategyBuilder:
         modifier = self._name_generator.generate_trigger()
         new_type_defs = _apply_extra_type_conditions(self.type_defs, triggers, modifier=modifier)
         builder = MessageStrategyBuilder(self.input_channels, new_type_defs)
-        mandatory: Set[TraceEvent] = set()
-        helpers: Set[MessageStrategy] = set(segment.helpers)
+        mandatory: set[TraceEvent] = set()
+        helpers: set[MessageStrategy] = set(segment.helpers)
         for ev in event.simple_events():
             assert isinstance(ev, HplSimpleEvent)
             strategy, dependencies = builder.build_pack_from_simple_event(ev)
@@ -289,11 +292,11 @@ class TraceStrategyBuilder:
         for ev in event.simple_events():
             assert isinstance(ev, HplSimpleEvent)
             # discard unknown input channels
-            type_name: Optional[str] = self.input_channels.get(ev.name)
+            type_name: str | None = self.input_channels.get(ev.name)
             if type_name is None:
                 continue
             # store predicates per message type
-            phi: Optional[HplPredicate] = anti_triggers.get(type_name)
+            phi: HplPredicate | None = anti_triggers.get(type_name)
             if phi is None:
                 phi = ev.predicate.negate()
             else:
@@ -311,7 +314,7 @@ class TraceStrategyBuilder:
 
     def spam_segment(
         self,
-        conditions: Optional[Mapping[str, HplExpression]] = None,
+        conditions: Mapping[str, HplExpression] | None = None,
         delay: float = 0.0,
         timeout: float = INF,
     ) -> TraceSegmentStrategy:
@@ -322,8 +325,8 @@ class TraceStrategyBuilder:
             modifier=self._name_generator.name,
         )
         builder = MessageStrategyBuilder(self.input_channels, new_type_defs)
-        spam: Set[TraceEvent] = set()
-        helpers: Set[MessageStrategy] = set()
+        spam: set[TraceEvent] = set()
+        helpers: set[MessageStrategy] = set()
         for channel_name, type_name in self.input_channels.items():
             strategy, dependencies = builder.build_pack_for_type_name(type_name)
             spam.add(TraceEvent(channel_name, strategy))
@@ -338,7 +341,7 @@ class TraceStrategyBuilder:
 
 def _apply_extra_type_conditions(
     type_defs: Mapping[str, MessageType],
-    conditions: Optional[Mapping[str, HplPredicate]],
+    conditions: Mapping[str, HplPredicate] | None,
     modifier: str = '',
 ) -> Mapping[str, MessageType]:
     if not conditions:

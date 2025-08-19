@@ -5,7 +5,9 @@
 # Imports
 ###############################################################################
 
-from typing import Any, Dict, Iterable, Mapping, Set
+from typing import Any
+
+from collections.abc import Iterable, Mapping
 
 from enum import Enum
 
@@ -13,7 +15,6 @@ from attrs import field, frozen
 from attrs.validators import deep_iterable, deep_mapping, instance_of, matches_re
 from hpl.ast import HplPredicate, HplVacuousTruth
 from hpl.parser import condition_parser
-# from hpl.types import TypeToken
 from typeguard import check_type, typechecked
 
 ################################################################################
@@ -103,8 +104,7 @@ class MessageType:
         params = list(map(ParameterDefinition.from_type_string, arg_data))
         kwarg_data = check_type(data.get('kwargs', {}), Mapping[str, str])
         kwparams = {
-            key: ParameterDefinition.from_type_string(value)
-            for key, value in kwarg_data.items()
+            key: ParameterDefinition.from_type_string(value) for key, value in kwarg_data.items()
         }
         precondition_data = check_type(data.get('assume', ()), Iterable[str])
         parser = condition_parser()
@@ -120,7 +120,7 @@ class MessageType:
             precondition=predicate,
         )
 
-    def dependencies(self) -> Set[str]:
+    def dependencies(self) -> set[str]:
         deps = {p.base_type for p in self.positional_parameters if not p.is_builtin}
         deps.update(p.base_type for p in self.keyword_parameters.values() if not p.is_builtin)
         return deps
@@ -139,5 +139,5 @@ def message_from_data(name: str, data: Mapping[str, Any]) -> MessageType:
 
 
 @typechecked
-def type_map_from_data(data: Mapping[str, Mapping[str, Any]]) -> Dict[str, MessageType]:
+def type_map_from_data(data: Mapping[str, Mapping[str, Any]]) -> dict[str, MessageType]:
     return {name: message_from_data(name, type_def) for name, type_def in data.items()}
