@@ -72,7 +72,7 @@ setup(
     },
     python_requires='>=3.8, <4',
     install_requires=[
-        'attrs>=23.1,<25.0',
+        'attrs>=23.1,<26.0',
         'hpl-rv~=1.2',
         'hpl-specs~=1.4',
         'Jinja2~=3.1',
